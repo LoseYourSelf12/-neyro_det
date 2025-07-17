@@ -1,0 +1,31 @@
+{
+    "controller": {
+        "api_base_url": "http://localhost:5000/api",  
+        "poll_interval_sec": 1,
+        "traffic_phase_lead_sec": 2
+    },
+    "cameras": {
+        "1": "rtsp://localhost:8554/cam1",
+        "2": "rtsp://localhost:8554/cam1",
+        "3": "rtsp://localhost:8554/cam1",
+        "4": "rtsp://localhost:8554/cam1"
+    },
+    "detector": {
+        "model_path": "models/yolov5s.onnx",
+        "input_size": 640,
+        "confidence_threshold": 0.25,
+        "nms_threshold": 0.45
+    },
+    "mask_dir": "masks/",
+    "analysis": {
+        "shots_per_phase": 3,
+        "congestion_threshold": 5,
+        "downgrade_cycles": 3
+    },
+    "logging": {
+        "level": "INFO",
+        "file": "logs/neyro_det.log",
+        "max_bytes": 10485760,
+        "backup_count": 5
+    }
+}

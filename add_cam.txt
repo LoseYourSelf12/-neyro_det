@@ -1,0 +1,8 @@
+1. start `mediamtx.exe`
+2. start `camera_emulator.py`
+
+3. add cameras:
+cam1 == `curl -X POST http://localhost:8000/add_camera/ -H "Content-Type: application/json" -d "{\"name\":\"cam1\",\"filepath\":\"E:/Programming/!neyro_det/samples/test_vid.mp4\"}"`
+cam2 == `curl -X POST http://localhost:8000/add_camera/ -H "Content-Type: application/json" -d "{\"name\":\"cam2\",\"filepath\":\"E:/Programming/!neyro_det/samples/test_vid.mp4\"}"`
+cam3 == `curl -X POST http://localhost:8000/add_camera/ -H "Content-Type: application/json" -d "{\"name\":\"cam3\",\"filepath\":\"E:/Programming/!neyro_det/samples/test_vid.mp4\"}"`
+cam4 == `curl -X POST http://localhost:8000/add_camera/ -H "Content-Type: application/json" -d "{\"name\":\"cam4\",\"filepath\":\"E:/Programming/!neyro_det/samples/test_vid.mp4\"}"`
