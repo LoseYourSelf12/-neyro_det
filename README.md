@@ -16,10 +16,12 @@
 
 ## Установка зависимостей
 
-Зависимости можно установить через `pip`:
+
+Зависимости перечислены в файле `requirements.txt`.
 
 ```bash
-pip install opencv-python numpy requests onnxruntime fastapi uvicorn PyQt6 ultralytics
+pip install -r requirements.txt
+=======
 ```
 
 ONNX‑модель `models/yolov5s.onnx` уже присутствует в репозитории.
