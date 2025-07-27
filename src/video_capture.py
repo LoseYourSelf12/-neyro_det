@@ -1,5 +1,5 @@
 import cv2
-import json
+import yaml
 import os
 import logging
 import numpy as np
@@ -8,7 +8,8 @@ from config import Config
 class VideoCapture:
     """
     Захват и маскирование кадров из RTSP-потоков или файлов.
-    Маски хранятся в директории mask_dir в формате JSON с ключом "polygons": [ [x,y], ... ].
+    Маски хранятся в YAML-файлах `zone_<cam_id>.yaml` в директории mask_dir.
+    Каждый файл должен содержать список зон со списком точек в поле `points`.
     """
     def __init__(self, config: Config):
         self._cams = config.get('cameras') or {}
@@ -29,12 +30,25 @@ class VideoCapture:
 
     def _load_masks(self):
         for cam_id in self._cams:
-            path = os.path.join(self._mask_dir, f"cam{cam_id}_mask.json")
+            path = os.path.join(self._mask_dir, f"zone_{cam_id}.yaml")
             if os.path.isfile(path):
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    self._masks[cam_id] = data.get('polygons', [])
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        data = yaml.safe_load(f)
+                    polygons = []
+                    if isinstance(data, dict):
+                        if 'zones' in data and isinstance(data['zones'], list):
+                            for zone in data['zones']:
+                                pts = zone.get('points', [])
+                                if pts:
+                                    polygons.append(pts)
+                        elif 'points' in data:
+                            polygons.append(data.get('points', []))
+                    self._masks[cam_id] = polygons
                     self._log.debug(f"Loaded mask for cam {cam_id}")
+                except Exception as e:
+                    self._masks[cam_id] = []
+                    self._log.error(f"Failed to load mask for cam {cam_id}: {e}")
             else:
                 self._masks[cam_id] = []
                 self._log.warning(f"Mask file not found for cam {cam_id}, no masking applied.")

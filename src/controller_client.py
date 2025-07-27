@@ -1,6 +1,7 @@
 import requests
 import logging
 from config import Config
+from status_parser import parse_status_message
 
 class ControllerClient:
     """
@@ -43,10 +44,15 @@ class ControllerClient:
         
     def get_phase_status(self) -> dict:
         """
-        Запрос к /api/phase_status, возвращает dict:
-          { "program": int, "phase": int, "time_left": float }
+        Запрос к /api/phase_status. Эндпоинт возвращает строку с шестнадцатеричным
+        статусом контроллера. Строка разбирается функцией `parse_status_message`.
+        Возвращается словарь, содержащий как минимум `program`, `phase` и
+        `time_left`.
         """
         url = f"{self._base}/phase_status"
         r = requests.get(url, timeout=self._timeout)
         r.raise_for_status()
-        return r.json()
+        status_str = r.text.strip()
+        data = parse_status_message(status_str)
+        self._log.debug(f"Parsed status: {data}")
+        return data
