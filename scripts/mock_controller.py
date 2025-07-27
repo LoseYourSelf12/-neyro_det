@@ -24,6 +24,40 @@ _state = {
 _state_lock = Lock()
 
 
+def _build_status_string() -> str:
+    """Construct hex status string similar to real controller."""
+    with _state_lock:
+        program = _state["program"]
+        phase = _state["phase"]
+        time_left = int(_state["time_left"])
+        base_time = PROGRAM_DEFINITIONS[program][phase]
+
+    now = time.localtime()
+    fields = [
+        now.tm_sec,
+        now.tm_min,
+        now.tm_hour,
+        now.tm_wday + 1,
+        now.tm_mday,
+        now.tm_mon,
+        now.tm_year - 2000,
+        program,
+        phase,
+        0,
+        phase,
+        0,
+        0,
+        0,
+        base_time,
+        time_left,
+        base_time - time_left,
+        0,
+        0,
+    ]
+    hex_str = ''.join(f"{b:02X}" for b in fields)
+    return f"wsO_CMD:electric_coal:x{hex_str}"
+
+
 class ProgramRequest(BaseModel):
     program: int
 
@@ -48,17 +82,8 @@ async def set_program(req: ProgramRequest):
 
 @app.get("/api/phase_status")
 async def phase_status():
-    """
-    Возвращает:
-      phase: индекс фазы (0,1,2)
-      time_left: сколько секунд осталось до конца этой фазы
-    """
-    with _state_lock:
-        return {
-            "program": _state["program"],
-            "phase": _state["phase"],
-            "time_left": _state["time_left"],
-        }
+    """Возвратить строку статуса контроллера в шестнадцатеричном виде."""
+    return _build_status_string()
 
 
 def _phase_timer_loop():
