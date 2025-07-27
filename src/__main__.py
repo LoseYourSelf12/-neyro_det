@@ -57,7 +57,6 @@ if __name__ == '__main__':
 
             # Когда до конца зелёного остаётся <= lead и после этой фазы включается красный
             if phase in (0, 1) and time_left <= lead:
-                print('1')
                 do_detection_cycle(vc, det, dec, ctrl, log)
                 # чтобы не повторяться в одной фазе
                 time.sleep(lead + 0.1)
