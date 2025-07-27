@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from threading import Lock, Thread
 import time
@@ -80,7 +81,7 @@ async def set_program(req: ProgramRequest):
     return {"status": "ok", "program": _state["program"]}
 
 
-@app.get("/api/phase_status")
+@app.get("/api/phase_status", response_class=PlainTextResponse)
 async def phase_status():
     """Возвратить строку статуса контроллера в шестнадцатеричном виде."""
     return _build_status_string()

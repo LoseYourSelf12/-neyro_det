@@ -53,6 +53,8 @@ class ControllerClient:
         r = requests.get(url, timeout=self._timeout)
         r.raise_for_status()
         status_str = r.text.strip()
+        if status_str.startswith('"') and status_str.endswith('"'):
+            status_str = status_str[1:-1]
         data = parse_status_message(status_str)
         self._log.debug(f"Parsed status: {data}")
         return data
