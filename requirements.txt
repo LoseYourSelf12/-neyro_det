@@ -1,0 +1,10 @@
+opencv-python
+numpy
+requests
+onnxruntime
+fastapi
+uvicorn
+PyQt6
+ultralytics
+PyYAML
+pydantic
