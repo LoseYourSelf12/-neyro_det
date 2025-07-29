@@ -26,6 +26,7 @@ class ConfigEditor(QWidget):
 
         self.camera_table = QTableWidget(0, 2)
         self.camera_table.setHorizontalHeaderLabels(["ID", "URL"])
+
         # make the cameras table taller so more rows are visible without
         # scrolling
         self.camera_table.setMinimumHeight(200)
