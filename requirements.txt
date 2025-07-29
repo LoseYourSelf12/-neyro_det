@@ -1,7 +1,6 @@
 opencv-python
 numpy
 requests
-onnxruntime
 fastapi
 uvicorn
 PyQt6
