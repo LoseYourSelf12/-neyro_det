@@ -9,27 +9,31 @@ from detector import Detector
 from analyzer import average_counts
 from decision import DecisionEngine
 
-def do_detection_cycle(vc, detector, decision, ctrl, logger):
+def do_detection_cycle(vc, detector, decision, ctrl, logger, phase):
     """
     Захват N кадров, подсчёт машин, решение и смена программы.
+    phase: текущая фаза светофора (0 или 1).
     """
     shots = cfg.get('analysis', 'shots_per_phase')
-    counts_12, counts_34 = [], []
+    counts_main, counts_side = [], []
     for _ in range(shots):
         f1 = vc.read('1'); f2 = vc.read('2')
-        counts_12.append(len(detector.predict(f1)) + len(detector.predict(f2)))
-        f3 = vc.read('3'); f4 = vc.read('4')
-        counts_34.append(len(detector.predict(f3)) + len(detector.predict(f4)))
+        counts_main.append(len(detector.predict(f1)) + len(detector.predict(f2)))
+        f3 = vc.read('3')
+        counts_side.append(len(detector.predict(f3)))
 
-    avg_12 = average_counts(counts_12)
-    avg_34 = average_counts(counts_34)
+    avg_main = average_counts(counts_main)
+    avg_side = average_counts(counts_side)
     prog = ctrl.get_current_program()
-    new_prog = decision.decide(prog, avg_12, avg_34)
+    new_prog = decision.update_and_decide(phase, prog, avg_main, avg_side)
 
     if new_prog != prog:
         ctrl.set_program(new_prog)
 
-    logger.info(f"Cycle complete: prog={prog}, avg12={avg_12:.1f}, avg34={avg_34:.1f}, new={new_prog}")
+    logger.info(
+        f"Cycle complete: prog={prog}, phase={phase}, "
+        f"avg_main={avg_main:.1f}, avg_side={avg_side:.1f}, new={new_prog}"
+    )
 
 if __name__ == '__main__':
     # Загрузка конфига и логгера
@@ -57,7 +61,7 @@ if __name__ == '__main__':
 
             # Когда до конца зелёного остаётся <= lead и после этой фазы включается красный
             if phase in (0, 1) and time_left <= lead:
-                do_detection_cycle(vc, det, dec, ctrl, log)
+                do_detection_cycle(vc, det, dec, ctrl, log, phase)
                 # чтобы не повторяться в одной фазе
                 time.sleep(lead + 0.1)
             else:

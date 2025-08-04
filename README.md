@@ -40,8 +40,7 @@ pip install -r requirements.txt
     "cameras": {
         "1": "rtsp://localhost:8554/cam1",
         "2": "rtsp://localhost:8554/cam1",
-        "3": "rtsp://localhost:8554/cam1",
-        "4": "rtsp://localhost:8554/cam1"
+        "3": "rtsp://localhost:8554/cam1"
     },
     "detector": {
         "model_path": "models/yolov5s.onnx",
@@ -52,7 +51,8 @@ pip install -r requirements.txt
     "mask_dir": "masks/",
     "analysis": {
         "shots_per_phase": 3,
-        "congestion_threshold": 5,
+        "phase1_threshold": 5,
+        "phase2_threshold": 5,
         "downgrade_cycles": 3
     },
     "logging": {
@@ -90,5 +90,5 @@ python scripts/mock_controller.py
 
 ## Демонстрационное приложение
 
-Файл `demo.py` реализует GUI‐демонстрацию на PyQt6 с визуализацией зон и статистики по четырём камерам. Для редактирования масок зон можно использовать `drow_zones.py`.
+Файл `demo.py` реализует GUI‐демонстрацию на PyQt6 с визуализацией зон и статистики по трём камерам. Для редактирования масок зон можно использовать `drow_zones.py`.
 
