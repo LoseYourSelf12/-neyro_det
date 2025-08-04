@@ -7,8 +7,7 @@
     "cameras": {
         "1": "rtsp://localhost:8554/cam1",
         "2": "rtsp://localhost:8554/cam1",
-        "3": "rtsp://localhost:8554/cam1",
-        "4": "rtsp://localhost:8554/cam1"
+        "3": "rtsp://localhost:8554/cam1"
     },
     "detector": {
         "model_path": "yolo11s.pt",
@@ -19,7 +18,8 @@
     "mask_dir": "masks/",
     "analysis": {
         "shots_per_phase": 3,
-        "congestion_threshold": 5,
+        "phase1_threshold": 5,
+        "phase2_threshold": 5,
         "downgrade_cycles": 3
     },
     "logging": {
