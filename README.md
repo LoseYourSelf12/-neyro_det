@@ -43,7 +43,7 @@ pip install -r requirements.txt
         "3": "rtsp://localhost:8554/cam1"
     },
     "detector": {
-        "model_path": "models/yolov5s.onnx",
+        "model_path": "models/yolo11s.engine",
         "input_size": 640,
         "confidence_threshold": 0.25,
         "nms_threshold": 0.45
@@ -91,4 +91,30 @@ python scripts/mock_controller.py
 ## Демонстрационное приложение
 
 Файл `demo.py` реализует GUI‐демонстрацию на PyQt6 с визуализацией зон и статистики по трём камерам. Для редактирования масок зон можно использовать `drow_zones.py`.
+
+## Экспорт модели в TensorRT
+
+Для ускорения работы на устройствах NVIDIA Jetson модель можно экспортировать в формат TensorRT:
+
+```bash
+python scripts/export_tensorrt.py --model yolo11s.pt --output models/yolo11s.engine
+```
+
+После конвертации путь к модели в `config/default.json` должен указывать на файл `.engine`.
+
+## Docker
+
+Собрать образ всего проекта на базе официального Jetson‑контейнера ultralytics:
+
+```bash
+docker build -t neyro_det .
+```
+
+Запуск сервиса (порт контроллера 5000, RTSP 8554, эмулятор камер 8000, SSH 22):
+
+```bash
+docker run -p 5000:5000 -p 8554:8554 -p 8000:8000 -p 22:22 neyro_det
+```
+
+После запуска контейнера приложение стартует автоматически, а к оболочке можно подключиться по SSH (логин `root`, пароль `root`).
 
