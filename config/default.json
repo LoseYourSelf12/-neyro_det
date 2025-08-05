@@ -10,7 +10,7 @@
         "3": "rtsp://localhost:8554/cam1"
     },
     "detector": {
-        "model_path": "models/yolo11s.engine",
+        "model_path": "models/yolo11s.pt",
         "input_size": 640,
         "confidence_threshold": 0.25,
         "nms_threshold": 0.45
@@ -18,8 +18,8 @@
     "mask_dir": "masks/",
     "analysis": {
         "shots_per_phase": 3,
-        "phase1_threshold": 5,
-        "phase2_threshold": 5,
+        "phase1_threshold": 50,
+        "phase2_threshold": 20,
         "downgrade_cycles": 3
     },
     "logging": {

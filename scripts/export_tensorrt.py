@@ -13,7 +13,7 @@ def main() -> None:
         "--imgsz", type=int, default=640,
         help="Image size used during export")
     parser.add_argument(
-        "--device", default=0,
+        "--device", default='0',
         help="Device ID to use for export")
     parser.add_argument(
         "--output", default="models/yolo11s.engine",
