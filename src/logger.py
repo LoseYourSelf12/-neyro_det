@@ -1,4 +1,5 @@
 import logging
+import os
 from logging.handlers import RotatingFileHandler
 from config import Config
 
@@ -7,6 +8,9 @@ def setup_logging(config: Config) -> None:
     level_name = config.get('logging', 'level', default='INFO')
     level = getattr(logging, level_name.upper(), logging.INFO)
     log_file = config.get('logging', 'file', default='neyro_det.log')
+    log_dir = os.path.dirname(log_file)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
     max_bytes = config.get('logging', 'max_bytes', default=10_485_760)
     backup_count = config.get('logging', 'backup_count', default=5)
 

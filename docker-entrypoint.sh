@@ -1,4 +1,4 @@
 #!/bin/bash
 set -e
 service ssh start
-exec python -m src
+exec python src/__main__.py

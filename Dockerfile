@@ -1,7 +1,7 @@
 FROM ultralytics/ultralytics:latest-jetson
 
 WORKDIR /app
-COPY . /app
+COPY requirements.txt /app/requirements.txt
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openssh-server \
@@ -10,6 +10,10 @@ RUN apt-get update \
     && echo 'root:root' | chpasswd
 
 RUN pip install --no-cache-dir -r requirements.txt
+
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+COPY . /app
 
 EXPOSE 5000 8000 8554 22
 
