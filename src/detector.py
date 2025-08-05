@@ -18,10 +18,14 @@ class Detector:
 
         self._log = logging.getLogger(self.__class__.__name__)
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        if model_path.endswith(".engine"):
+            # TensorRT engine runs on GPU 0 without torch device strings
+            self._device = 0
+        else:
+            self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._model = YOLO(model_path)
-        self._device = device
-        self._log.info(f"YOLO model loaded from {model_path} on {device}")
+        self._log.info(
+            f"YOLO model loaded from {model_path} on {self._device}")
 
     def predict(self, frame: np.ndarray) -> List[List[int]]:
         """Вернуть список прямоугольников [x, y, w, h] для класса 'car'."""
