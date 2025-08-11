@@ -1,9 +1,7 @@
-opencv-python
 numpy
 requests
 fastapi
 uvicorn
 PyQt6
-ultralytics
 PyYAML
 pydantic
