@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import torch
 
-from config import Config
+from .config import Config
 
 
 class Detector:
@@ -37,7 +37,12 @@ class Detector:
         self._scale = scale_boxes
         self._device = select_device("0" if torch.cuda.is_available() else "cpu")
         self._model = DetectMultiBackend(model_path, device=self._device)
-        self._stride = int(self._model.stride.max())
+        stride = self._model.stride
+        if hasattr(stride, "max"):
+            stride = stride.max()
+        elif isinstance(stride, (list, tuple)):
+            stride = max(stride)
+        self._stride = int(stride)
         self._log.info(f"YOLOv5 model loaded from {model_path} on {self._device}")
 
     def _preprocess(self, frame: np.ndarray) -> torch.Tensor:

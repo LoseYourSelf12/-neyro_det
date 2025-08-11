@@ -1,7 +1,7 @@
 import requests
 import logging
-from config import Config
-from status_parser import parse_status_message
+from .config import Config
+from .status_parser import parse_status_message
 
 class ControllerClient:
     """

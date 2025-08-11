@@ -1,5 +1,5 @@
 import logging
-from config import Config
+from .config import Config
 
 class DecisionEngine:
     """State machine for selecting traffic light programs (4-11)."""

@@ -3,7 +3,7 @@ import yaml
 import os
 import logging
 import numpy as np
-from config import Config
+from .config import Config
 
 class VideoCapture:
     """
