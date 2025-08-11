@@ -1,13 +1,13 @@
 # src/__main__.py
 import time
 import logging
-from config import Config
-from logger import setup_logging
-from controller_client import ControllerClient
-from video_capture import VideoCapture
-from detector import Detector
-from analyzer import CountsAggregator
-from decision import DecisionEngine
+from .config import Config
+from .logger import setup_logging
+from .controller_client import ControllerClient
+from .video_capture import VideoCapture
+from .detector import Detector
+from .analyzer import CountsAggregator
+from .decision import DecisionEngine
 
 def do_detection_cycle(vc, detector, decision, ctrl, logger, phase):
     """

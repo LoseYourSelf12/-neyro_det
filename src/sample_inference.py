@@ -1,6 +1,6 @@
 import cv2
-from config import Config
-from detector import Detector
+from .config import Config
+from .detector import Detector
 
 def main():
     config = Config()
