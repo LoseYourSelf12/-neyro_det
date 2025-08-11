@@ -6,7 +6,7 @@ from logger import setup_logging
 from controller_client import ControllerClient
 from video_capture import VideoCapture
 from detector import Detector
-from analyzer import average_counts
+from analyzer import CountsAggregator
 from decision import DecisionEngine
 
 def do_detection_cycle(vc, detector, decision, ctrl, logger, phase):
@@ -15,15 +15,15 @@ def do_detection_cycle(vc, detector, decision, ctrl, logger, phase):
     phase: текущая фаза светофора (0 или 1).
     """
     shots = cfg.get('analysis', 'shots_per_phase')
-    counts_main, counts_side = [], []
+    agg_main, agg_side = CountsAggregator(), CountsAggregator()
     for _ in range(shots):
         f1 = vc.read('1'); f2 = vc.read('2')
-        counts_main.append(len(detector.predict(f1)) + len(detector.predict(f2)))
+        agg_main.add(len(detector.predict(f1)) + len(detector.predict(f2)))
         f3 = vc.read('3')
-        counts_side.append(len(detector.predict(f3)))
+        agg_side.add(len(detector.predict(f3)))
 
-    avg_main = average_counts(counts_main)
-    avg_side = average_counts(counts_side)
+    avg_main = agg_main.average()
+    avg_side = agg_side.average()
     prog = ctrl.get_current_program()
     new_prog = decision.update_and_decide(phase, prog, avg_main, avg_side)
 

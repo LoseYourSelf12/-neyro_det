@@ -10,7 +10,8 @@
         "3": "rtsp://localhost:8554/cam1"
     },
     "detector": {
-        "model_path": "models/yolo11s.pt",
+        "model_path": "models/yolov5s.pt",
+        "repo_path": "yolov5",
         "input_size": 640,
         "confidence_threshold": 0.25,
         "nms_threshold": 0.45
