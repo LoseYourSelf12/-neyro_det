@@ -1,4 +1,5 @@
 import logging
+from typing import Tuple
 from .config import Config
 
 class DecisionEngine:
@@ -20,7 +21,7 @@ class DecisionEngine:
         self._p2_congest = False
 
     @staticmethod
-    def _decode_program(program: int) -> tuple[int, bool]:
+    def _decode_program(program: int) -> Tuple[int, bool]:
         """Return (p1_step, p2_extended) for program id."""
         if 4 <= program <= 7:
             return program - 4, False

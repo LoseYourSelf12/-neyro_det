@@ -31,10 +31,10 @@ class Detector:
 
         from models.common import DetectMultiBackend  # type: ignore
         from utils.torch_utils import select_device  # type: ignore
-        from utils.general import non_max_suppression, scale_boxes  # type: ignore
+        from utils.general import non_max_suppression, scale_coords  # type: ignore
 
         self._nms = non_max_suppression
-        self._scale = scale_boxes
+        self._scale = scale_coords
         self._device = select_device("0" if torch.cuda.is_available() else "cpu")
         self._model = DetectMultiBackend(model_path, device=self._device)
         stride = self._model.stride
