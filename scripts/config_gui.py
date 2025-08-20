@@ -135,7 +135,7 @@ class ConfigEditor(QWidget):
 
 
 def select_config() -> str:
-    default_path = os.path.join(os.path.dirname(__file__), 'config', 'default.json')
+    default_path = os.path.join(os.path.dirname(__file__), 'default.json')
     if os.path.isfile(default_path):
         return default_path
     app = QApplication.instance() or QApplication([])
