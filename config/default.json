@@ -1,7 +1,7 @@
 {
     "controller": {
-        "serial_port": "/dev/ttyUSB0",
-        "baudrate": 9600,
+        "host": "192.168.1.33",
+        "listen_port": 1030,
         "timeout": 1,
         "poll_interval_sec": 1,
         "traffic_phase_lead_sec": 2
