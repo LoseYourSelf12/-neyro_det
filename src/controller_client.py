@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple
+from typing import Tuple, Optional
 import socket
 
 from .config import Config
@@ -53,28 +53,11 @@ class ControllerClient:
         self._sock.settimeout(timeout)
         self._server = server
 
-        # Контроллер может посылать приветственное сообщение сразу после
-        # установления соединения. Оно не соответствует протоколу КДУ-3 и
-        # сбивает дальнейший обмен (появляется ошибка "Unexpected response").
-        # Чтобы избежать этого, читаем и игнорируем все данные, пришедшие
-        # до первого перевода строки.
-        try:
-            self._sock.settimeout(0.5)
-            greeting = b""
-            while True:
-                try:
-                    chunk = self._sock.recv(1024)
-                    if not chunk:
-                        break
-                    greeting += chunk
-                    if greeting.endswith(b"\n"):
-                        break
-                except socket.timeout:
-                    break
-            if greeting:
-                self._log.debug("Controller greeting: %r", greeting)
-        finally:
-            self._sock.settimeout(timeout)
+        # После установления соединения модем отправляет своё имя и ожидает
+        # подтверждения от центра, а затем сообщение о переходе в рабочий
+        # режим. Обрабатываем этот обмен, чтобы дальнейшие запросы не
+        # натолкнулись на "Unexpected response: p...".
+        self._perform_handshake()
 
 
     # ------------------------------------------------------------------
@@ -89,32 +72,93 @@ class ControllerClient:
         cs = self._checksum(payload)
         return f"{payload}${cs:02X}\n".encode(ENCODING)
 
+    def _build_reply(self, result: str, data: str = "") -> bytes:
+        payload = f"{result}{data}"
+        cs = self._checksum(payload)
+        return f"{payload}${cs:02X}\n".encode(ENCODING)
+
+    def _recv_line(self, timeout: Optional[float] = None) -> str:
+        """Receive one line from socket and decode it."""
+        prev_timeout = self._sock.gettimeout()
+        if timeout is not None:
+            self._sock.settimeout(timeout)
+        data = b""
+        while not data.endswith(b"\n"):
+            chunk = self._sock.recv(1024)
+            if not chunk:
+                break
+            data += chunk
+        if timeout is not None:
+            self._sock.settimeout(prev_timeout)
+        return data.decode(ENCODING, errors="replace").strip()
+
+    def _perform_handshake(self) -> None:
+        """Handle initial modem handshake (name and work mode message)."""
+        try:
+            while True:
+                line = self._recv_line(timeout=10)
+                if not line:
+                    break
+                if "$" not in line:
+                    continue
+                data_part, cs_part = line.split("$", 1)
+                recv_cs = int(cs_part[:2], 16)
+                if self._checksum(data_part) != recv_cs:
+                    self._log.warning("Checksum mismatch in handshake message: %s", line)
+                    continue
+                if data_part.startswith("p"):
+                    name = data_part[1:]
+                    self._log.info("Controller name: %s", name)
+                    self._sock.sendall(self._build_reply("!", "00"))
+                    continue
+                if data_part.startswith("W"):
+                    self._log.info("Controller ready for work")
+                    break
+                if data_part.startswith("a"):
+                    # echo during handshake
+                    self._sock.sendall(self._build("a"))
+        except socket.timeout:
+            self._log.warning("Handshake with controller timed out")
+
+    def _read_response(self) -> Tuple[str, str]:
+        """Read next meaningful message from controller."""
+        while True:
+            line = self._recv_line()
+            if not line:
+                raise TimeoutError("No response from controller")
+            if "$" not in line:
+                self._log.warning("Invalid message: %s", line)
+                continue
+            data_part, cs_part = line.split("$", 1)
+            recv_cs = int(cs_part[:2], 16)
+            if self._checksum(data_part) != recv_cs:
+                self._log.warning("Checksum mismatch in message: %s", line)
+                continue
+            if data_part.startswith("a"):
+                self._log.debug("Echo request")
+                self._sock.sendall(self._build("a"))
+                continue
+            if data_part.startswith("p"):
+                self._log.debug("Name message: %s", data_part[1:])
+                self._sock.sendall(self._build_reply("!", "00"))
+                continue
+            if data_part.startswith("W"):
+                self._log.debug("Work mode notification")
+                continue
+            result = data_part[:1]
+            data = data_part[1:]
+            return result, data
+
     def _send(self, com: str, arg: str = "") -> Tuple[str, str]:
         """Send command and return tuple (result, data)."""
         msg = self._build(com, arg)
         self._log.info("-> %s", msg.decode(ENCODING, errors="replace"))
         self._sock.sendall(msg)
-        data = b""
         try:
-            while not data.endswith(b"\n"):
-                chunk = self._sock.recv(1024)
-                if not chunk:
-                    break
-                data += chunk
+            result, data = self._read_response()
         except socket.timeout:
             raise TimeoutError("No response from controller")
-        line = data.decode(ENCODING, errors="replace").strip()
-        self._log.info("<- %s", line)
-        if not line:
-            raise TimeoutError("No response from controller")
-        if "$" not in line:
-            raise ValueError("Invalid response format")
-        data_part, cs_part = line.split("$", 1)
-        recv_cs = int(cs_part[:2], 16)
-        if self._checksum(data_part) != recv_cs:
-            raise ValueError("Checksum mismatch in response")
-        result = data_part[:1]
-        data = data_part[1:]
+        self._log.info("<- %s%s", result, data)
         return result, data
 
     # ------------------------------------------------------------------
