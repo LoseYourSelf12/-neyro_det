@@ -2,7 +2,7 @@
     "controller": {
         "host": "192.168.1.33",
         "listen_port": 1030,
-        "timeout": 1,
+        "timeout": 20,
         "poll_interval_sec": 1,
         "traffic_phase_lead_sec": 2
     },

@@ -50,6 +50,7 @@ class ControllerClient:
         self._sock.settimeout(timeout)
         self._server = server
 
+
     # ------------------------------------------------------------------
     # low level helpers
     @staticmethod
