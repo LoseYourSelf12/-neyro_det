@@ -1,60 +1,104 @@
-import requests
 import logging
+from typing import Tuple
+
+import serial
+
 from .config import Config
 from .status_parser import parse_status_message
 
+
 class ControllerClient:
+    """Коммуникация с контроллером по последовательному интерфейсу.
+
+    Обмен ведётся согласно протоколу КДУ-3:
+
+    `<COM>[<ARG>]<$><CHECKSUM><0x0A>`
+
+    Где ``CHECKSUM`` — инвертированная сумма всех байтов до символа ``$``.
+    Ответ имеет вид ``<RESULT><DATA>$<CHECKSUM><0x0A>``. ``RESULT`` может быть
+    ``!`` (код исполнения) или ``n`` (данные).
+
+    Клиент предоставляет три публичных метода:
+
+    ``get_current_program()`` – вернуть номер текущего плана;
+    ``set_program(id)`` – переключить план на ``id``;
+    ``get_phase_status()`` – получить структуру статуса, содержащую план,
+    фазу, оставшееся время и т.п.
     """
-    Обёртка над HTTP-API контроллера светофора.
-    Предполагаем два эндпоинта:
-      GET  {base_url}/program      → текущая программа { "program": <int> }
-      POST {base_url}/program      → смена программы с JSON { "program": <int> }
-    """
-    def __init__(self, config: Config):
-        self._base = config.get('controller', 'api_base_url')
-        self._timeout = config.get('controller', 'http_timeout', default=2)
+
+    def __init__(self, config: Config) -> None:
+        ctrl_cfg = config.get("controller") or {}
+        port = ctrl_cfg.get("serial_port", "/dev/ttyUSB0")
+        baud = ctrl_cfg.get("baudrate", 9600)
+        timeout = ctrl_cfg.get("timeout", 1)
+
         self._log = logging.getLogger(self.__class__.__name__)
+        self._ser = serial.Serial(port, baudrate=baud, timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # low level helpers
+    @staticmethod
+    def _checksum(payload: str) -> int:
+        """Calculate inverted sum checksum for ASCII payload."""
+        return (~sum(payload.encode("ascii"))) & 0xFF
+
+    def _build(self, com: str, arg: str = "") -> bytes:
+        payload = f"{com}{arg}"
+        cs = self._checksum(payload)
+        return f"{payload}${cs:02X}\n".encode("ascii")
+
+    def _send(self, com: str, arg: str = "") -> Tuple[str, str]:
+        """Send command and return tuple (result, data)."""
+        msg = self._build(com, arg)
+        self._log.debug("-> %r", msg)
+        self._ser.write(msg)
+        line = self._ser.readline().decode("ascii").strip()
+        self._log.debug("<- %s", line)
+        if not line:
+            raise TimeoutError("No response from controller")
+        if "$" not in line:
+            raise ValueError("Invalid response format")
+        data_part, cs_part = line.split("$", 1)
+        recv_cs = int(cs_part[:2], 16)
+        if self._checksum(data_part) != recv_cs:
+            raise ValueError("Checksum mismatch in response")
+        result = data_part[:1]
+        data = data_part[1:]
+        return result, data
+
+    # ------------------------------------------------------------------
+    # public API
+    def get_phase_status(self) -> dict:
+        """Запросить мониторинг (b02) и распарсить статус контроллера."""
+        res, data = self._send("b", "02")
+        if res != "n":
+            raise RuntimeError(f"Unexpected response: {res}{data}")
+        # parse_status_message ожидает строку с префиксом 'x'
+        parsed = parse_status_message("x" + data)
+        self._log.debug("Parsed status: %s", parsed)
+        return parsed
 
     def get_current_program(self) -> int:
-        """Вернуть ID текущей программы (0–6)."""
-        url = f"{self._base}/program"
-        try:
-            r = requests.get(url, timeout=self._timeout)
-            r.raise_for_status()
-            data = r.json()
-            program = data.get('program')
-            self._log.debug(f"Current program from controller: {program}")
-            return int(program)
-        except Exception as e:
-            self._log.error(f"Failed to get current program: {e}")
-            raise
+        """Вернуть ID текущей программы, используя мониторинг."""
+        status = self.get_phase_status()
+        return int(status["program"])
 
     def set_program(self, program_id: int) -> bool:
-        """Поменять программу на program_id. Возвращает True при успехе."""
-        url = f"{self._base}/program"
-        payload = {'program': program_id}
-        try:
-            r = requests.post(url, json=payload, timeout=self._timeout)
-            r.raise_for_status()
-            self._log.info(f"Program changed to {program_id}")
-            return True
-        except Exception as e:
-            self._log.error(f"Failed to set program to {program_id}: {e}")
-            return False
-        
-    def get_phase_status(self) -> dict:
-        """
-        Запрос к /api/phase_status. Эндпоинт возвращает строку с шестнадцатеричным
-        статусом контроллера. Строка разбирается функцией `parse_status_message`.
-        Возвращается словарь, содержащий как минимум `program`, `phase` и
-        `time_left`.
-        """
-        url = f"{self._base}/phase_status"
-        r = requests.get(url, timeout=self._timeout)
-        r.raise_for_status()
-        status_str = r.text.strip()
-        if status_str.startswith('"') and status_str.endswith('"'):
-            status_str = status_str[1:-1]
-        data = parse_status_message(status_str)
-        self._log.debug(f"Parsed status: {data}")
-        return data
+        """Сменить план работы контроллера командой 'g'."""
+        arg = f"{program_id:02X}"
+        res, data = self._send("g", arg)
+        success = res == "!" and data == "00"
+        if success:
+            self._log.info("Program changed to %s", program_id)
+        else:
+            self._log.error("Failed to set program %s: %s%s", program_id, res, data)
+        return success
+
+    # ------------------------------------------------------------------
+    def close(self) -> None:
+        if self._ser.is_open:
+            self._ser.close()
+
+
+__all__ = ["ControllerClient"]
+
