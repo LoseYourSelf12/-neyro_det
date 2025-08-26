@@ -6,6 +6,9 @@ from .config import Config
 from .status_parser import parse_status_message
 
 
+ENCODING = "windows-1251"
+
+
 class ControllerClient:
     """Коммуникация с контроллером по TCP/IP.
 
@@ -78,18 +81,18 @@ class ControllerClient:
     # low level helpers
     @staticmethod
     def _checksum(payload: str) -> int:
-        """Calculate inverted sum checksum for ASCII payload."""
-        return (~sum(payload.encode("ascii"))) & 0xFF
+        """Calculate inverted sum checksum for payload encoded in Windows-1251."""
+        return (~sum(payload.encode(ENCODING))) & 0xFF
 
     def _build(self, com: str, arg: str = "") -> bytes:
         payload = f"{com}{arg}"
         cs = self._checksum(payload)
-        return f"{payload}${cs:02X}\n".encode("ascii")
+        return f"{payload}${cs:02X}\n".encode(ENCODING)
 
     def _send(self, com: str, arg: str = "") -> Tuple[str, str]:
         """Send command and return tuple (result, data)."""
         msg = self._build(com, arg)
-        self._log.debug("-> %r", msg)
+        self._log.info("-> %s", msg.decode(ENCODING, errors="replace"))
         self._sock.sendall(msg)
         data = b""
         try:
@@ -100,8 +103,8 @@ class ControllerClient:
                 data += chunk
         except socket.timeout:
             raise TimeoutError("No response from controller")
-        line = data.decode("ascii").strip()
-        self._log.debug("<- %s", line)
+        line = data.decode(ENCODING, errors="replace").strip()
+        self._log.info("<- %s", line)
         if not line:
             raise TimeoutError("No response from controller")
         if "$" not in line:
