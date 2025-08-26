@@ -1,6 +1,5 @@
 import datetime
 
-
 def _byte(hex_data: str, index: int) -> int:
     return int(hex_data[2 * index: 2 * index + 2], 16)
 

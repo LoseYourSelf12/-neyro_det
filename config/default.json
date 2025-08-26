@@ -1,6 +1,8 @@
 {
     "controller": {
-        "api_base_url": "http://localhost:5000/api",  
+        "serial_port": "/dev/ttyUSB0",
+        "baudrate": 9600,
+        "timeout": 1,
         "poll_interval_sec": 1,
         "traffic_phase_lead_sec": 2
     },

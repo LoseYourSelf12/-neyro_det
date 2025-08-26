@@ -8,6 +8,7 @@ numpy==1.19.4
 
 # opencv-python # Ignorin on jetson nano | use: sudo apt install python3-opencv
 requests>=2.23.0
+pyserial
 fastapi==0.63.0
 uvicorn[standard]==0.11.8
 # PyQt6  # Ignorin on jetson nano
