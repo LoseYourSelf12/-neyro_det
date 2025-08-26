@@ -50,6 +50,29 @@ class ControllerClient:
         self._sock.settimeout(timeout)
         self._server = server
 
+        # Контроллер может посылать приветственное сообщение сразу после
+        # установления соединения. Оно не соответствует протоколу КДУ-3 и
+        # сбивает дальнейший обмен (появляется ошибка "Unexpected response").
+        # Чтобы избежать этого, читаем и игнорируем все данные, пришедшие
+        # до первого перевода строки.
+        try:
+            self._sock.settimeout(0.5)
+            greeting = b""
+            while True:
+                try:
+                    chunk = self._sock.recv(1024)
+                    if not chunk:
+                        break
+                    greeting += chunk
+                    if greeting.endswith(b"\n"):
+                        break
+                except socket.timeout:
+                    break
+            if greeting:
+                self._log.debug("Controller greeting: %r", greeting)
+        finally:
+            self._sock.settimeout(timeout)
+
 
     # ------------------------------------------------------------------
     # low level helpers
