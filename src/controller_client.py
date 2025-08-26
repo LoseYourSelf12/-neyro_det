@@ -33,14 +33,19 @@ class ControllerClient:
         host = ctrl_cfg.get("host", "192.168.1.33")
         port = ctrl_cfg.get("listen_port", 1030)
         timeout = ctrl_cfg.get("timeout", 1)
+        name = ctrl_cfg.get("client_name", "neyro_det")
 
         self._log = logging.getLogger(self.__class__.__name__)
+        self._host = host
+        self._timeout = timeout
+        self._name = name
 
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind(("", port))
         server.listen(1)
         server.settimeout(timeout)
+        self._server = server
         self._log.info("Waiting for controller connection on port %s", port)
         try:
             self._sock, addr = server.accept()
@@ -51,12 +56,9 @@ class ControllerClient:
             self._log.warning("Unexpected controller IP %s", addr[0])
         self._log.info("Controller connected: %s", addr)
         self._sock.settimeout(timeout)
-        self._server = server
 
-        # После установления соединения модем отправляет своё имя и ожидает
-        # подтверждения от центра, а затем сообщение о переходе в рабочий
-        # режим. Обрабатываем этот обмен, чтобы дальнейшие запросы не
-        # натолкнулись на "Unexpected response: p...".
+        # После установления соединения модем и центр обмениваются именами
+        # и переходят в рабочий режим.
         self._perform_handshake()
 
 
@@ -93,8 +95,9 @@ class ControllerClient:
         return data.decode(ENCODING, errors="replace").strip()
 
     def _perform_handshake(self) -> None:
-        """Handle initial modem handshake (name and work mode message)."""
+        """Обмен именами с контроллером и ожидание готовности к работе."""
         try:
+            name_sent = False
             while True:
                 line = self._recv_line(timeout=10)
                 if not line:
@@ -110,6 +113,11 @@ class ControllerClient:
                     name = data_part[1:]
                     self._log.info("Controller name: %s", name)
                     self._sock.sendall(self._build_reply("!", "00"))
+                    if not name_sent:
+                        res, data = self._send("p", self._name)
+                        if res != "!" or data != "00":
+                            self._log.warning("Registration rejected: %s%s", res, data)
+                        name_sent = True
                     continue
                 if data_part.startswith("W"):
                     self._log.info("Controller ready for work")
@@ -153,13 +161,15 @@ class ControllerClient:
         """Send command and return tuple (result, data)."""
         msg = self._build(com, arg)
         self._log.info("-> %s", msg.decode(ENCODING, errors="replace"))
-        self._sock.sendall(msg)
         try:
+            self._sock.sendall(msg)
             result, data = self._read_response()
+            self._log.info("<- %s%s", result, data)
+            return result, data
+        except ConnectionResetError as exc:
+            raise ConnectionError("Controller connection reset") from exc
         except socket.timeout:
             raise TimeoutError("No response from controller")
-        self._log.info("<- %s%s", result, data)
-        return result, data
 
     # ------------------------------------------------------------------
     # public API
