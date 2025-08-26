@@ -35,12 +35,15 @@ class ControllerClient:
         timeout = ctrl_cfg.get("timeout", 1)
 
         self._log = logging.getLogger(self.__class__.__name__)
+        self._host = host
+        self._timeout = timeout
 
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind(("", port))
         server.listen(1)
         server.settimeout(timeout)
+        self._server = server
         self._log.info("Waiting for controller connection on port %s", port)
         try:
             self._sock, addr = server.accept()
@@ -51,7 +54,6 @@ class ControllerClient:
             self._log.warning("Unexpected controller IP %s", addr[0])
         self._log.info("Controller connected: %s", addr)
         self._sock.settimeout(timeout)
-        self._server = server
 
         # После установления соединения модем отправляет своё имя и ожидает
         # подтверждения от центра, а затем сообщение о переходе в рабочий
@@ -62,6 +64,25 @@ class ControllerClient:
 
     # ------------------------------------------------------------------
     # low level helpers
+    def _reconnect(self) -> None:
+        """Wait for controller to reconnect and perform handshake again."""
+        try:
+            if getattr(self, "_sock", None):
+                self._sock.close()
+        except Exception:
+            pass
+        self._log.info("Waiting for controller reconnection on port %s", self._server.getsockname()[1])
+        while True:
+            try:
+                self._sock, addr = self._server.accept()
+            except socket.timeout:
+                continue
+            if addr[0] != self._host:
+                self._log.warning("Unexpected controller IP %s", addr[0])
+            self._log.info("Controller connected: %s", addr)
+            self._sock.settimeout(self._timeout)
+            self._perform_handshake()
+            break
     @staticmethod
     def _checksum(payload: str) -> int:
         """Calculate inverted sum checksum for payload encoded in Windows-1251."""
@@ -152,14 +173,19 @@ class ControllerClient:
     def _send(self, com: str, arg: str = "") -> Tuple[str, str]:
         """Send command and return tuple (result, data)."""
         msg = self._build(com, arg)
-        self._log.info("-> %s", msg.decode(ENCODING, errors="replace"))
-        self._sock.sendall(msg)
-        try:
-            result, data = self._read_response()
-        except socket.timeout:
-            raise TimeoutError("No response from controller")
-        self._log.info("<- %s%s", result, data)
-        return result, data
+        for attempt in range(2):
+            self._log.info("-> %s", msg.decode(ENCODING, errors="replace"))
+            try:
+                self._sock.sendall(msg)
+                result, data = self._read_response()
+                self._log.info("<- %s%s", result, data)
+                return result, data
+            except ConnectionResetError:
+                self._log.warning("Controller connection reset, reconnecting")
+                self._reconnect()
+            except socket.timeout:
+                raise TimeoutError("No response from controller")
+        raise ConnectionError("Controller connection lost")
 
     # ------------------------------------------------------------------
     # public API
