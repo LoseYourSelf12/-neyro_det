@@ -25,8 +25,6 @@ The implementation below is intentionally small and synchronous which makes
 it suitable for the existing service.
 """
 
-from __future__ import annotations
-
 import logging
 import socket
 from typing import Optional, Tuple
