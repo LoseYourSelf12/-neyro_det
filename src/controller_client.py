@@ -1,6 +1,35 @@
+"""TCP client for communicating with traffic light controller.
+
+The controller (modem) connects to the centre via TCP and speaks a simple
+ASCII based protocol.  Messages are encoded in Windows‑1251 and have the
+following format::
+
+    <CMD>[<ARG>]<$><CS><\n>
+
+where ``CS`` is the inverted sum of all bytes before the ``$`` symbol.  The
+controller responds with messages of the same form where ``CMD`` is either
+``!`` (status code) or ``n`` (requested data).
+
+This module implements only the minimum required subset of the protocol:
+
+* handshake on first connection (receive controller name and confirm);
+* query current programme using monitoring command ``b02``;
+* change programme using command ``g``.
+
+The centre acts as a TCP server.  Upon connection the controller immediately
+sends its name using command ``p``.  The centre must acknowledge it with
+``!00`` and wait for the ``W`` message that indicates that the controller has
+entered working mode.  Afterwards regular commands may be exchanged.
+
+The implementation below is intentionally small and synchronous which makes
+it suitable for the existing service.
+"""
+
+from __future__ import annotations
+
 import logging
-from typing import Tuple, Optional
 import socket
+from typing import Optional, Tuple
 
 from .config import Config
 from .status_parser import parse_status_message
@@ -10,87 +39,55 @@ ENCODING = "windows-1251"
 
 
 class ControllerClient:
-    """Коммуникация с контроллером по TCP/IP.
-
-    Обмен ведётся согласно протоколу КДУ-3:
-
-    `<COM>[<ARG>]<$><CHECKSUM><0x0A>`
-
-    Где ``CHECKSUM`` — инвертированная сумма всех байтов до символа ``$``.
-    Ответ имеет вид ``<RESULT><DATA>$<CHECKSUM><0x0A>``. ``RESULT`` может быть
-    ``!`` (код исполнения) или ``n`` (данные).
-
-    Клиент предоставляет три публичных метода:
-
-    ``get_current_program()`` – вернуть номер текущего плана;
-    ``set_program(id)`` – переключить план на ``id``;
-    ``get_phase_status()`` – получить структуру статуса, содержащую план,
-    фазу, оставшееся время и т.п.
-    """
+    """Synchronous TCP client for interacting with the controller."""
 
     def __init__(self, config: Config) -> None:
         ctrl_cfg = config.get("controller") or {}
         host = ctrl_cfg.get("host", "192.168.1.33")
         port = ctrl_cfg.get("listen_port", 1030)
         timeout = ctrl_cfg.get("timeout", 1)
-        name = ctrl_cfg.get("client_name", "neyro_det")
 
         self._log = logging.getLogger(self.__class__.__name__)
         self._host = host
         self._timeout = timeout
-        self._name = name
 
+        self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._server.bind(("", port))
+        self._server.listen(1)
+        self._server.settimeout(timeout)
 
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(("", port))
-        server.listen(1)
-        server.settimeout(timeout)
-        self._server = server
-        self._log.info("Waiting for controller connection on port %s", port)
-        try:
-            self._sock, addr = server.accept()
-        except socket.timeout:
-            server.close()
-            raise TimeoutError("Controller connection timeout")
-        if addr[0] != host:
-            self._log.warning("Unexpected controller IP %s", addr[0])
-        self._log.info("Controller connected: %s", addr)
-        self._sock.settimeout(timeout)
-
-        # После установления соединения модем и центр обмениваются именами
-        # и переходят в рабочий режим.
-        self._perform_handshake()
-
+        self._accept()
 
     # ------------------------------------------------------------------
     # low level helpers
-    def _reconnect(self) -> None:
-        """Wait for controller to reconnect and perform handshake again."""
+    def _accept(self) -> None:
+        """Wait for controller connection and perform handshake."""
+        self._log.info(
+            "Waiting for controller connection on port %s",
+            self._server.getsockname()[1],
+        )
         try:
-            if getattr(self, "_sock", None):
-                self._sock.close()
-        except Exception:
-            pass
-        self._log.info("Waiting for controller reconnection on port %s", self._server.getsockname()[1])
-        while True:
-            try:
-                self._sock, addr = self._server.accept()
-            except socket.timeout:
-                continue
-            if addr[0] != self._host:
-                self._log.warning("Unexpected controller IP %s", addr[0])
-            self._log.info("Controller connected: %s", addr)
-            self._sock.settimeout(self._timeout)
-            self._perform_handshake()
-            break
+            sock, addr = self._server.accept()
+        except socket.timeout as exc:
+            raise TimeoutError("Controller connection timeout") from exc
+
+        if addr[0] != self._host:
+            self._log.warning("Unexpected controller IP %s", addr[0])
+        self._log.info("Controller connected: %s", addr)
+
+        sock.settimeout(self._timeout)
+        self._sock = sock
+
+        self._perform_handshake()
+
     @staticmethod
     def _checksum(payload: str) -> int:
-        """Calculate inverted sum checksum for payload encoded in Windows-1251."""
+        """Return inverted sum checksum for ``payload``."""
         return (~sum(payload.encode(ENCODING))) & 0xFF
 
-    def _build(self, com: str, arg: str = "") -> bytes:
-        payload = f"{com}{arg}"
+    def _build(self, cmd: str, arg: str = "") -> bytes:
+        payload = f"{cmd}{arg}"
         cs = self._checksum(payload)
         return f"{payload}${cs:02X}\n".encode(ENCODING)
 
@@ -100,7 +97,6 @@ class ControllerClient:
         return f"{payload}${cs:02X}\n".encode(ENCODING)
 
     def _recv_line(self, timeout: Optional[float] = None) -> str:
-        """Receive one line from socket and decode it."""
         prev_timeout = self._sock.gettimeout()
         if timeout is not None:
             self._sock.settimeout(timeout)
@@ -114,42 +110,43 @@ class ControllerClient:
             self._sock.settimeout(prev_timeout)
         return data.decode(ENCODING, errors="replace").strip()
 
+    # ------------------------------------------------------------------
+    # protocol handling
     def _perform_handshake(self) -> None:
-        """Обмен именами с контроллером и ожидание готовности к работе."""
+        """Handle initial handshake with the controller."""
         try:
-            name_sent = False
+            got_name = False
             while True:
                 line = self._recv_line(timeout=10)
                 if not line:
-                    break
+                    raise TimeoutError("Empty handshake message")
                 if "$" not in line:
                     continue
-                data_part, cs_part = line.split("$", 1)
-                recv_cs = int(cs_part[:2], 16)
-                if self._checksum(data_part) != recv_cs:
-                    self._log.warning("Checksum mismatch in handshake message: %s", line)
+                data, cs_part = line.split("$", 1)
+                if self._checksum(data) != int(cs_part[:2], 16):
+                    self._log.warning(
+                        "Checksum mismatch in handshake message: %s", line
+                    )
                     continue
-                if data_part.startswith("p"):
-                    name = data_part[1:]
-                    self._log.info("Controller name: %s", name)
+                if data.startswith("p"):
+                    self._controller_name = data[1:]
+                    self._log.info(
+                        "Controller name: %s", self._controller_name
+                    )
                     self._sock.sendall(self._build_reply("!", "00"))
-                    if not name_sent:
-                        res, data = self._send("p", self._name)
-                        if res != "!" or data != "00":
-                            self._log.warning("Registration rejected: %s%s", res, data)
-                        name_sent = True
+                    got_name = True
                     continue
-                if data_part.startswith("W"):
+                if data.startswith("W") and got_name:
                     self._log.info("Controller ready for work")
                     break
-                if data_part.startswith("a"):
+                if data.startswith("a"):
                     # echo during handshake
                     self._sock.sendall(self._build("a"))
-        except socket.timeout:
-            self._log.warning("Handshake with controller timed out")
+                    continue
+        except socket.timeout as exc:
+            raise TimeoutError("Handshake with controller timed out") from exc
 
     def _read_response(self) -> Tuple[str, str]:
-        """Read next meaningful message from controller."""
         while True:
             line = self._recv_line()
             if not line:
@@ -157,68 +154,64 @@ class ControllerClient:
             if "$" not in line:
                 self._log.warning("Invalid message: %s", line)
                 continue
-            data_part, cs_part = line.split("$", 1)
-            recv_cs = int(cs_part[:2], 16)
-            if self._checksum(data_part) != recv_cs:
+            data, cs_part = line.split("$", 1)
+            if self._checksum(data) != int(cs_part[:2], 16):
                 self._log.warning("Checksum mismatch in message: %s", line)
                 continue
-            if data_part.startswith("a"):
-                self._log.debug("Echo request")
+            if data.startswith("a"):
                 self._sock.sendall(self._build("a"))
                 continue
-            if data_part.startswith("p"):
-                self._log.debug("Name message: %s", data_part[1:])
+            if data.startswith("p"):
+                # controller can resend its name – acknowledge it
                 self._sock.sendall(self._build_reply("!", "00"))
                 continue
-            if data_part.startswith("W"):
-                self._log.debug("Work mode notification")
+            if data.startswith("W"):
+                # work mode notification – ignore
                 continue
-            result = data_part[:1]
-            data = data_part[1:]
-            return result, data
+            return data[:1], data[1:]
 
-    def _send(self, com: str, arg: str = "") -> Tuple[str, str]:
-        """Send command and return tuple (result, data)."""
-        msg = self._build(com, arg)
+    def _send(self, cmd: str, arg: str = "") -> Tuple[str, str]:
+        msg = self._build(cmd, arg)
         self._log.info("-> %s", msg.decode(ENCODING, errors="replace"))
         try:
             self._sock.sendall(msg)
-            result, data = self._read_response()
-            self._log.info("<- %s%s", result, data)
-            return result, data
-        except ConnectionResetError as exc:
-            raise ConnectionError("Controller connection reset") from exc
-        except socket.timeout:
-            raise TimeoutError("No response from controller")
-
+            res, data = self._read_response()
+            self._log.info("<- %s%s", res, data)
+            return res, data
+        except (socket.timeout, ConnectionError, OSError):
+            # if something goes wrong, wait for reconnection and retry once
+            self._log.warning("Controller connection lost, waiting for reconnect")
+            self._accept()
+            self._sock.sendall(msg)
+            res, data = self._read_response()
+            self._log.info("<- %s%s", res, data)
+            return res, data
 
     # ------------------------------------------------------------------
     # public API
     def get_phase_status(self) -> dict:
-        """Запросить мониторинг (b02) и распарсить статус контроллера."""
+        """Request monitoring data (command ``b02``)."""
         res, data = self._send("b", "02")
         if res != "n":
             raise RuntimeError(f"Unexpected response: {res}{data}")
-        # parse_status_message ожидает строку с префиксом 'x'
-        parsed = parse_status_message("x" + data)
-        self._log.debug("Parsed status: %s", parsed)
-        return parsed
+        # ``parse_status_message`` expects prefix ``x`` for monitoring frames
+        return parse_status_message("x" + data)
 
     def get_current_program(self) -> int:
-        """Вернуть ID текущей программы, используя мониторинг."""
         status = self.get_phase_status()
         return int(status["program"])
 
     def set_program(self, program_id: int) -> bool:
-        """Сменить план работы контроллера командой 'g'."""
         arg = f"{program_id:02X}"
         res, data = self._send("g", arg)
-        success = res == "!" and data == "00"
-        if success:
+        ok = res == "!" and data == "00"
+        if ok:
             self._log.info("Program changed to %s", program_id)
         else:
-            self._log.error("Failed to set program %s: %s%s", program_id, res, data)
-        return success
+            self._log.error(
+                "Failed to set program %s: %s%s", program_id, res, data
+            )
+        return ok
 
     # ------------------------------------------------------------------
     def close(self) -> None:
