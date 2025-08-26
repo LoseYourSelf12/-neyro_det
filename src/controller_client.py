@@ -1,14 +1,13 @@
 import logging
 from typing import Tuple
-
-import serial
+import socket
 
 from .config import Config
 from .status_parser import parse_status_message
 
 
 class ControllerClient:
-    """Коммуникация с контроллером по последовательному интерфейсу.
+    """Коммуникация с контроллером по TCP/IP.
 
     Обмен ведётся согласно протоколу КДУ-3:
 
@@ -28,12 +27,13 @@ class ControllerClient:
 
     def __init__(self, config: Config) -> None:
         ctrl_cfg = config.get("controller") or {}
-        port = ctrl_cfg.get("serial_port", "/dev/ttyUSB0")
-        baud = ctrl_cfg.get("baudrate", 9600)
+        host = ctrl_cfg.get("host", "192.168.1.33")
+        port = ctrl_cfg.get("port", 1030)
         timeout = ctrl_cfg.get("timeout", 1)
 
         self._log = logging.getLogger(self.__class__.__name__)
-        self._ser = serial.Serial(port, baudrate=baud, timeout=timeout)
+        self._sock = socket.create_connection((host, port), timeout=timeout)
+        self._sock.settimeout(timeout)
 
     # ------------------------------------------------------------------
     # low level helpers
@@ -51,8 +51,17 @@ class ControllerClient:
         """Send command and return tuple (result, data)."""
         msg = self._build(com, arg)
         self._log.debug("-> %r", msg)
-        self._ser.write(msg)
-        line = self._ser.readline().decode("ascii").strip()
+        self._sock.sendall(msg)
+        data = b""
+        try:
+            while not data.endswith(b"\n"):
+                chunk = self._sock.recv(1024)
+                if not chunk:
+                    break
+                data += chunk
+        except socket.timeout:
+            raise TimeoutError("No response from controller")
+        line = data.decode("ascii").strip()
         self._log.debug("<- %s", line)
         if not line:
             raise TimeoutError("No response from controller")
@@ -96,8 +105,8 @@ class ControllerClient:
 
     # ------------------------------------------------------------------
     def close(self) -> None:
-        if self._ser.is_open:
-            self._ser.close()
+        if self._sock:
+            self._sock.close()
 
 
 __all__ = ["ControllerClient"]
