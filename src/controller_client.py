@@ -40,6 +40,7 @@ class ControllerClient:
         self._timeout = timeout
         self._name = name
 
+
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind(("", port))
@@ -64,6 +65,25 @@ class ControllerClient:
 
     # ------------------------------------------------------------------
     # low level helpers
+    def _reconnect(self) -> None:
+        """Wait for controller to reconnect and perform handshake again."""
+        try:
+            if getattr(self, "_sock", None):
+                self._sock.close()
+        except Exception:
+            pass
+        self._log.info("Waiting for controller reconnection on port %s", self._server.getsockname()[1])
+        while True:
+            try:
+                self._sock, addr = self._server.accept()
+            except socket.timeout:
+                continue
+            if addr[0] != self._host:
+                self._log.warning("Unexpected controller IP %s", addr[0])
+            self._log.info("Controller connected: %s", addr)
+            self._sock.settimeout(self._timeout)
+            self._perform_handshake()
+            break
     @staticmethod
     def _checksum(payload: str) -> int:
         """Calculate inverted sum checksum for payload encoded in Windows-1251."""
@@ -170,6 +190,7 @@ class ControllerClient:
             raise ConnectionError("Controller connection reset") from exc
         except socket.timeout:
             raise TimeoutError("No response from controller")
+
 
     # ------------------------------------------------------------------
     # public API
