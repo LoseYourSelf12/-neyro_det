@@ -8,9 +8,9 @@
         "traffic_phase_lead_sec": 2
     },
     "cameras": {
-        "1": "rtsp://localhost:8554/cam1",
-        "2": "rtsp://localhost:8554/cam1",
-        "3": "rtsp://localhost:8554/cam1"
+        "1": "rtsp://admin:1qazxsw2@192.168.1.111:554/ISAPI/Streaming/Channels/101",
+        "2": "rtsp://admin:1qazxsw2@192.168.1.113:554/ISAPI/Streaming/Channels/101",
+        "3": "rtsp://admin:1qazxsw2@192.168.1.112:554/ISAPI/Streaming/Channels/101"
     },
     "detector": {
         "model_path": "models/yolov5s.pt",
