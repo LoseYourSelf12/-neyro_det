@@ -64,7 +64,14 @@ class VideoCapture:
         ret, frame = cap.read()
         if not ret:
             self._log.error(f"Failed to read from camera {cam_id}")
-            return None
+            if self._restart_camera(cam_id):
+                cap = self._caps.get(cam_id)
+                ret, frame = cap.read() if cap else (False, None)
+                if not ret:
+                    self._log.error(f"Failed to read from camera {cam_id} after restart")
+                    return None
+            else:
+                return None
         mask = self._create_mask(frame.shape[:2], self._masks.get(cam_id, []))
         frame[mask == 0] = 0
         return frame
@@ -76,3 +83,25 @@ class VideoCapture:
             pts = np.array(poly, dtype='int32')
             cv2.fillPoly(mask, [pts], 0)
         return mask
+
+    def _restart_camera(self, cam_id: str) -> bool:
+        """
+        Попытаться переинициализировать камеру по её идентификатору.
+
+        Возвращает True при успешном перезапуске.
+        """
+        uri = self._cams.get(cam_id)
+        if not uri:
+            self._log.error(f"URI for camera {cam_id} not found")
+            return False
+        cap = self._caps.get(cam_id)
+        if cap:
+            cap.release()
+        new_cap = cv2.VideoCapture(uri)
+        if not new_cap.isOpened():
+            self._log.error(f"Cannot reopen camera {cam_id} ({uri})")
+            self._caps[cam_id] = None
+            return False
+        self._caps[cam_id] = new_cap
+        self._log.info(f"Restarted camera {cam_id}")
+        return True
