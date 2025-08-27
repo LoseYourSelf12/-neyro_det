@@ -55,8 +55,9 @@ class ZoneEditor(QMainWindow):
         self.setWindowTitle("Zone Editor")
         self.resize(1000, 600)
 
-        # Переменные для работы с видео
+        # Переменные для работы с видео/изображением
         self.cap = None
+        self.image = None
         self.timer = QTimer()
         self.playing = False
         self.current_frame_index = 0
@@ -108,7 +109,7 @@ class ZoneEditor(QMainWindow):
         self.slider.valueChanged.connect(self.slider_changed)
         left_layout.addWidget(self.slider)
 
-        # Кнопки управления (Play/Pause, Load Video)
+        # Кнопки управления (Play/Pause, Load Video, Load Image)
         controls_layout = QHBoxLayout()
         self.play_button = QPushButton("Play/Pause")
         self.play_button.clicked.connect(self.toggle_play)
@@ -117,6 +118,10 @@ class ZoneEditor(QMainWindow):
         self.load_button = QPushButton("Load Video")
         self.load_button.clicked.connect(self.load_video)
         controls_layout.addWidget(self.load_button)
+
+        self.load_image_button = QPushButton("Load Image")
+        self.load_image_button.clicked.connect(self.load_image)
+        controls_layout.addWidget(self.load_image_button)
 
         left_layout.addLayout(controls_layout)
 
@@ -159,7 +164,7 @@ class ZoneEditor(QMainWindow):
         self.display_width, self.display_height = w, h
         self.video_label.setFixedSize(self.display_width, self.display_height)
         # Перерисовываем текущий кадр, если есть
-        if self.cap and self.current_frame_index < self.total_frames:
+        if (self.cap or self.image is not None) and self.current_frame_index < self.total_frames:
             self.show_frame(self.current_frame_index)
 
     def load_video(self):
@@ -176,11 +181,13 @@ class ZoneEditor(QMainWindow):
                 QMessageBox.warning(self, "Error", "Failed to open video")
                 return
 
+            self.image = None
             self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
             self.video_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             self.video_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
             # Настраиваем слайдер
+            self.slider.setEnabled(True)
             self.slider.setRange(0, self.total_frames - 1)
             self.slider.setValue(0)
 
@@ -188,8 +195,40 @@ class ZoneEditor(QMainWindow):
             self.current_frame_index = 0
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
+            # Включаем управление воспроизведением
+            self.play_button.setEnabled(True)
+
             # Показываем первый кадр
             self.show_frame(self.current_frame_index)
+
+    def load_image(self):
+        """
+        Диалог выбора изображения.
+        """
+        file_dialog = QFileDialog()
+        image_path, _ = file_dialog.getOpenFileName(
+            self, "Open Image File", "", "Images (*.png *.jpg *.jpeg *.bmp)"
+        )
+        if image_path:
+            frame = cv2.imread(image_path)
+            if frame is None:
+                QMessageBox.warning(self, "Error", "Failed to open image")
+                return
+
+            self.cap = None
+            self.image = frame
+            self.total_frames = 1
+            self.current_frame_index = 0
+            self.video_width = frame.shape[1]
+            self.video_height = frame.shape[0]
+
+            # Отключаем элементы управления видео
+            self.slider.setEnabled(False)
+            self.slider.setRange(0, 0)
+            self.play_button.setEnabled(False)
+
+            # Показываем изображение
+            self.show_frame(0)
 
     def toggle_play(self):
         if self.cap is None:
@@ -224,10 +263,13 @@ class ZoneEditor(QMainWindow):
         Считываем кадр с индексом frame_index из self.cap,
         рисуем зоны и масштабируем под (display_width, display_height).
         """
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-        ret, frame = self.cap.read()
-        if not ret:
-            return
+        if self.image is not None:
+            frame = self.image.copy()
+        else:
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+            ret, frame = self.cap.read()
+            if not ret:
+                return
 
         frame_drawn = self.draw_zones(frame)
         frame_rgb = cv2.cvtColor(frame_drawn, cv2.COLOR_BGR2RGB)
@@ -279,7 +321,7 @@ class ZoneEditor(QMainWindow):
         Добавляем точку в текущий полигон с учётом масштабирования.
         pos — QPoint в координатах VideoLabel (scaled).
         """
-        if self.cap is None:
+        if self.cap is None and self.image is None:
             return
         # Переводим экранные координаты в «оригинальные»
         scale_x = self.video_width / self.display_width
