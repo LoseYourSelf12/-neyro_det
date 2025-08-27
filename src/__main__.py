@@ -35,8 +35,8 @@ def main() -> None:
 
     # Map directions to camera ids
     directions = [
-        ("main", ["1", "3"]),
-        ("side", ["2"]),
+        ("main", ["1", "2"]),
+        ("side", ["3"]),
     ]
 
     shots = cfg.get("analysis", "shots_per_phase", default=1)
