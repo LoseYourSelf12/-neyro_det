@@ -85,11 +85,6 @@ class VideoCapture:
         return mask
 
     def _restart_camera(self, cam_id: str) -> bool:
-        """
-        Попытаться переинициализировать камеру по её идентификатору.
-
-        Возвращает True при успешном перезапуске.
-        """
         uri = self._cams.get(cam_id)
         if not uri:
             self._log.error(f"URI for camera {cam_id} not found")
