@@ -73,15 +73,18 @@ class VideoCapture:
             else:
                 return None
         mask = self._create_mask(frame.shape[:2], self._masks.get(cam_id, []))
-        frame[mask == 0] = 0
+        # frame[mask == 0] = 0
+        frame = cv2.bitwise_and(frame, frame, mask=mask)
         return frame
 
     def _create_mask(self, shape, polygons):
         h, w = shape
-        mask = 255 * np.ones((h, w), dtype='uint8')
+        # mask = 255 * np.ones((h, w), dtype='uint8')
+        mask = np.zeros((h, w), dtype='uint8')
         for poly in polygons:
             pts = np.array(poly, dtype='int32')
-            cv2.fillPoly(mask, [pts], 0)
+            # cv2.fillPoly(mask, [pts], 0)
+            cv2.fillPoly(mask, [pts], 255)
         return mask
 
     def _restart_camera(self, cam_id: str) -> bool:
