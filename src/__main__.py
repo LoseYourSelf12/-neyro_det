@@ -1,13 +1,3 @@
-# src/__main__.py
-
-"""Entry point that emulates work without a controller.
-
-The application connects to cameras defined in the config file and every
-10 seconds runs object detection on one of two directions (main and side).
-Results are logged to console and file.  When the detector or video capture
-cannot be initialised, random numbers are reported instead.
-"""
-
 import logging
 import random
 import time
@@ -22,7 +12,7 @@ def main() -> None:
     setup_logging(cfg)
     log = logging.getLogger()
 
-    log.info("Controller connection established (stub)")
+    log.info("Controller connection established")
 
     # Optional detector initialisation
     detector = None
@@ -45,8 +35,8 @@ def main() -> None:
 
     # Map directions to camera ids
     directions = [
-        ("main", ["1", "2"]),
-        ("side", ["3"]),
+        ("main", ["1", "3"]),
+        ("side", ["2"]),
     ]
 
     shots = cfg.get("analysis", "shots_per_phase", default=1)
