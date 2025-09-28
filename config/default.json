@@ -8,9 +8,30 @@
         "traffic_phase_lead_sec": 2
     },
     "cameras": {
-        "1": "http://admin:1qazxsw2@192.168.101.2:8881/ISAPI/Streaming/Channels/101/picture?snapShotImageType=JPEG",
-        "2": "http://admin:1qazxsw2@192.168.101.3:8881/ISAPI/Streaming/Channels/101/picture?snapShotImageType=JPEG",
-        "3": "http://admin:1qazxsw2@192.168.101.4:8881/ISAPI/Streaming/Channels/101/picture?snapShotImageType=JPEG"
+        "1": {
+            "snapshot": "http://192.168.101.2:8881/ISAPI/Streaming/Channels/101/picture?snapShotImageType=JPEG",
+            "auth": {
+                "type": "digest",
+                "username": "admin",
+                "password": "1qazxsw2"
+            }
+        },
+        "2": {
+            "snapshot": "http://192.168.101.3:8881/ISAPI/Streaming/Channels/101/picture?snapShotImageType=JPEG",
+            "auth": {
+                "type": "digest",
+                "username": "admin",
+                "password": "1qazxsw2"
+            }
+        },
+        "3": {
+            "snapshot": "http://192.168.101.4:8881/ISAPI/Streaming/Channels/101/picture?snapShotImageType=JPEG",
+            "auth": {
+                "type": "digest",
+                "username": "admin",
+                "password": "1qazxsw2"
+            }
+        }
     },
     "detector": {
         "model_path": "models/yolov5s.pt",

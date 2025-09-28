@@ -1,13 +1,23 @@
 import os
 import logging
+from dataclasses import dataclass
 from typing import Dict, List, Optional
+from urllib.parse import urlparse, urlunparse, unquote
 
 import cv2
 import numpy as np
 import requests
 import yaml
+from requests.auth import AuthBase, HTTPBasicAuth, HTTPDigestAuth
 
 from .config import Config
+
+
+@dataclass
+class CameraEndpoint:
+    url: str
+    auth: Optional[AuthBase] = None
+
 
 class VideoCapture:
     """
@@ -16,21 +26,32 @@ class VideoCapture:
     Каждый файл должен содержать список зон со списком точек в поле `points`.
     """
     def __init__(self, config: Config):
-        self._cams = config.get('cameras') or {}
+        self._cams: Dict[str, CameraEndpoint] = {}
+        raw_cams = config.get('cameras') or {}
         self._mask_dir = config.get('mask_dir')
         self._session = requests.Session()
         self._timeout = config.get('cameras_timeout', default=5) or 5
         self._masks: Dict[str, List[List[int]]] = {}
         self._log = logging.getLogger(self.__class__.__name__)
-        self._init_cameras()
+        self._init_cameras(raw_cams)
         self._load_masks()
 
-    def _init_cameras(self):
-        normalized: Dict[str, str] = {}
-        for cam_id, data in self._cams.items():
+    def _init_cameras(self, raw_cams: Dict[str, object]):
+        for cam_id, data in raw_cams.items():
             uri = None
+            auth_info = None
             if isinstance(data, dict):
                 uri = data.get("snapshot") or data.get("snapshot_url") or data.get("url")
+                auth_info = data.get("auth")
+                if not isinstance(auth_info, dict):
+                    auth_info = None
+                fallback_auth = {
+                    key: data.get(key)
+                    for key in ("username", "password", "type", "auth_type")
+                    if data.get(key) is not None
+                }
+                if auth_info is None and fallback_auth:
+                    auth_info = fallback_auth
             elif isinstance(data, str):
                 uri = data
 
@@ -38,10 +59,58 @@ class VideoCapture:
                 self._log.error(f"Snapshot URL for camera {cam_id} is not provided")
                 continue
 
-            normalized[cam_id] = uri
-            self._log.debug(f"Registered snapshot URL for camera {cam_id}")
+            normalized_url, auth = self._build_auth(cam_id, uri, auth_info)
+            self._cams[cam_id] = CameraEndpoint(url=normalized_url, auth=auth)
+            self._log.debug("Registered snapshot endpoint for camera %s", cam_id)
 
-        self._cams = normalized
+    def _build_auth(self, cam_id: str, uri: str, auth_info: Optional[Dict[str, object]]):
+        username = None
+        password = None
+        auth_type = None
+
+        if isinstance(auth_info, dict):
+            username = auth_info.get("username") or auth_info.get("user")
+            password = auth_info.get("password")
+            auth_type = auth_info.get("type") or auth_info.get("auth_type")
+
+        parsed = urlparse(uri)
+
+        if parsed.username:
+            url_username = unquote(parsed.username)
+            url_password = unquote(parsed.password or "")
+            if username is None:
+                username = url_username
+            if password is None:
+                password = url_password
+
+        if not username or password is None:
+            if username and password is None:
+                self._log.error(
+                    "Password for camera %s is not provided", cam_id
+                )
+            return uri, None
+
+        auth_type = (auth_type or "digest").lower()
+        if auth_type == "basic":
+            auth = HTTPBasicAuth(username, password)
+        elif auth_type == "digest":
+            auth = HTTPDigestAuth(username, password)
+        else:
+            self._log.warning(
+                "Unknown auth type '%s' for camera %s, defaulting to digest",
+                auth_type,
+                cam_id,
+            )
+            auth = HTTPDigestAuth(username, password)
+
+        sanitized_uri = uri
+        if parsed.username:
+            netloc = parsed.hostname or ""
+            if parsed.port:
+                netloc = f"{netloc}:{parsed.port}"
+            sanitized_uri = urlunparse(parsed._replace(netloc=netloc))
+
+        return sanitized_uri, auth
 
     def _load_masks(self):
         for cam_id in self._cams:
@@ -72,13 +141,28 @@ class VideoCapture:
         """
         Вернуть текущий маскированный кадр для указанной камеры.
         """
-        uri = self._cams.get(cam_id)
-        if not uri:
+        endpoint = self._cams.get(cam_id)
+        if not endpoint:
             self._log.error(f"Camera {cam_id} not initialized")
             return None
 
         try:
-            response = self._session.get(uri, timeout=self._timeout)
+            response = self._session.get(
+                endpoint.url,
+                timeout=self._timeout,
+                auth=endpoint.auth,
+            )
+        except requests.RequestException as exc:
+            self._log.error(f"Failed to fetch snapshot from camera {cam_id}: {exc}")
+            return None
+
+        if response.status_code == 401:
+            self._log.warning(
+                "Unauthorized snapshot request for camera %s", cam_id
+            )
+            return None
+
+        try:
             response.raise_for_status()
         except requests.RequestException as exc:
             self._log.error(f"Failed to fetch snapshot from camera {cam_id}: {exc}")
