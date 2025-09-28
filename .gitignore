@@ -4,3 +4,5 @@ __pycache__
 *.pt
 *.engine
 yolov5/
+snapshots/
+runs/
