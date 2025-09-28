@@ -71,7 +71,7 @@ def main() -> None:
                                 if not cv2.imwrite(str(output_path), annotated):
                                     log.error("Failed to save annotated frame for camera %s", cam_id)
                     else:
-                        count += random.randint(0, 5)
+                        count = 0
                 agg.add(count)
             avg = int(round(agg.average()))
             log.info("Detected %d cars on %s direction", avg, name)

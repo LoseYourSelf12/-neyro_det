@@ -17,7 +17,7 @@
             }
         },
         "2": {
-            "snapshot": "http://192.168.101.3:8881/ISAPI/Streaming/Channels/101/picture?snapShotImageType=JPEG",
+            "snapshot": "http://192.168.101.2:8882/ISAPI/Streaming/Channels/101/picture?snapShotImageType=JPEG",
             "auth": {
                 "type": "digest",
                 "username": "admin",
@@ -25,7 +25,7 @@
             }
         },
         "3": {
-            "snapshot": "http://192.168.101.4:8881/ISAPI/Streaming/Channels/101/picture?snapShotImageType=JPEG",
+            "snapshot": "http://192.168.101.2:8883/ISAPI/Streaming/Channels/101/picture?snapShotImageType=JPEG",
             "auth": {
                 "type": "digest",
                 "username": "admin",
