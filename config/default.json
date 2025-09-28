@@ -8,9 +8,30 @@
         "traffic_phase_lead_sec": 2
     },
     "cameras": {
-        "1": "rtsp://admin:1qazxsw2@192.168.1.111:554/ISAPI/Streaming/Channels/101",
-        "2": "rtsp://admin:1qazxsw2@192.168.1.113:554/ISAPI/Streaming/Channels/101",
-        "3": "rtsp://admin:1qazxsw2@192.168.1.112:554/ISAPI/Streaming/Channels/101"
+        "1": {
+            "snapshot": "http://192.168.101.2:8881/ISAPI/Streaming/Channels/101/picture?snapShotImageType=JPEG",
+            "auth": {
+                "type": "digest",
+                "username": "admin",
+                "password": "1qazxsw2"
+            }
+        },
+        "2": {
+            "snapshot": "http://192.168.101.3:8881/ISAPI/Streaming/Channels/101/picture?snapShotImageType=JPEG",
+            "auth": {
+                "type": "digest",
+                "username": "admin",
+                "password": "1qazxsw2"
+            }
+        },
+        "3": {
+            "snapshot": "http://192.168.101.4:8881/ISAPI/Streaming/Channels/101/picture?snapShotImageType=JPEG",
+            "auth": {
+                "type": "digest",
+                "username": "admin",
+                "password": "1qazxsw2"
+            }
+        }
     },
     "detector": {
         "model_path": "models/yolov5s.pt",
@@ -20,6 +41,9 @@
         "nms_threshold": 0.45
     },
     "mask_dir": "masks/",
+    "snapshots": {
+        "save_dir": "samples/detections"
+    },
     "analysis": {
         "shots_per_phase": 3,
         "phase1_threshold": 50,
