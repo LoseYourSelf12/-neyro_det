@@ -1,6 +1,9 @@
 import logging
 import random
 import time
+from pathlib import Path
+
+import cv2
 
 from .config import Config
 from .logger import setup_logging
@@ -26,10 +29,13 @@ def main() -> None:
 
     # Optional video capture initialisation
     vc = None
+    save_dir = None
     try:
         from .video_capture import VideoCapture
 
         vc = VideoCapture(cfg)
+        save_dir = Path(cfg.get("snapshots", "save_dir", default="samples/detections"))
+        save_dir.mkdir(parents=True, exist_ok=True)
     except Exception as exc:  # pragma: no cover - depends on environment
         log.warning("Video capture unavailable, using random frames: %s", exc)
 
@@ -50,8 +56,20 @@ def main() -> None:
                 count = 0
                 for cam_id in cam_ids:
                     frame = vc.read(cam_id) if vc is not None else None
-                    if detector is not None and frame is not None:
-                        count += len(detector.predict(frame))
+                    if frame is None:
+                        log.warning("Frame for camera %s is unavailable, skipping detection", cam_id)
+                        continue
+
+                    if detector is not None:
+                        boxes = detector.predict(frame)
+                        count += len(boxes)
+
+                        if vc is not None and save_dir is not None:
+                            annotated = vc.annotate(cam_id, frame, boxes)
+                            if annotated is not None:
+                                output_path = save_dir / f"camera_{cam_id}.jpg"
+                                if not cv2.imwrite(str(output_path), annotated):
+                                    log.error("Failed to save annotated frame for camera %s", cam_id)
                     else:
                         count += random.randint(0, 5)
                 agg.add(count)
