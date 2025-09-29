@@ -2,6 +2,7 @@ import logging
 import random
 import time
 from pathlib import Path
+import traceback
 
 import cv2
 
@@ -26,6 +27,7 @@ def main() -> None:
         log.info("Detector model loaded")
     except Exception as exc:  # pragma: no cover - depends on environment
         log.warning("Detector unavailable, using random counts: %s", exc)
+        traceback.print_exc()
 
     # Optional video capture initialisation
     vc = None
