@@ -42,7 +42,7 @@
     },
     "mask_dir": "masks/",
     "snapshots": {
-        "save_dir": "samples/detections"
+        "save_dir": "/media/MYUSB/neyro_det"
     },
     "analysis": {
         "shots_per_phase": 3,
