@@ -42,7 +42,8 @@
     },
     "mask_dir": "masks/",
     "snapshots": {
-        "save_dir": "/media/MYUSB/neyro_det"
+        "save_dir": "/media/MYUSB/neyro_det",
+        "min_free_gb": 1.0
     },
     "analysis": {
         "shots_per_phase": 3,
