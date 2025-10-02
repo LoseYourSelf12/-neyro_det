@@ -190,22 +190,21 @@ class VideoCapture:
 
     def annotate(self, cam_id: str, frame: np.ndarray, boxes: List[List[int]]) -> Optional[np.ndarray]:
         """
-        Наложить маски и боксы на кадр.
+        Наложить маску (контур полигона) и боксы на кадр БЕЗ какой-либо заливки/подкрашивания.
         Возвращает аннотированный кадр или None, если входные данные некорректны.
         """
         if frame is None or frame.size == 0:
             return None
 
         annotated = frame.copy()
+
         polygons = self._masks.get(cam_id, [])
         if polygons:
-            overlay = annotated.copy()
             for poly in polygons:
                 pts = np.array(poly, dtype=np.int32)
-                cv2.fillPoly(overlay, [pts], (0, 255, 0))
-                cv2.polylines(overlay, [pts], isClosed=True, color=(0, 200, 0), thickness=2)
-            cv2.addWeighted(overlay, 0.3, annotated, 0.7, 0, annotated)
+                cv2.polylines(annotated, [pts], isClosed=True, color=(0, 200, 0), thickness=2, lineType=cv2.LINE_AA)
 
+        # Боксы объектов
         for x, y, w, h in boxes:
             cv2.rectangle(annotated, (x, y), (x + w, y + h), (0, 0, 255), 2)
 
