@@ -1,5 +1,4 @@
 import logging
-import random
 import time
 from pathlib import Path
 import traceback
@@ -14,11 +13,45 @@ from .analyzer import CountsAggregator
 
 
 def _unique_name(cam_id: str, ext: str = "jpg") -> str:
-    now = datetime.now()
-    # миллисекунды + короткий uuid, чтобы исключить коллизии при быстром сохранении
-    stamp = now.strftime("%Y%m%d_%H%M%S_%f")[:-3]  # YYYYMMDD_HHMMSS_mmm
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
     rid = uuid.uuid4().hex[:8]
     return f"img_cam{cam_id}_{stamp}_{rid}.{ext}"
+
+
+# Цвета BGR для классов
+CLASS_COLOR = {
+    "car":   (0, 255, 0),     # зелёный
+    "truck": (0, 165, 255),   # оранжевый
+    "bus":   (255, 0, 0),     # синий
+}
+
+def _draw_detections(img, detections):
+    """
+    detections: [{'xyxy':(x1,y1,x2,y2),'name':str,'conf':float,'cls':int}, ...]
+    """
+    annotated = img.copy()
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.5
+    thickness = 2
+
+    for det in detections:
+        x1, y1, x2, y2 = det["xyxy"]
+        name = det.get("name", "obj")
+        conf = det.get("conf", None)
+        color = CLASS_COLOR.get(name, (0, 255, 255))  # default — жёлтый
+
+        # bbox
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+
+        # метка
+        label = f"{name}" + (f" {conf:.2f}" if conf is not None else "")
+        (tw, th), _ = cv2.getTextSize(label, font, font_scale, thickness)
+        # фон под текст
+        cv2.rectangle(annotated, (x1, y1 - th - 6), (x1 + tw + 4, y1), color, -1)
+        # текст контрастным цветом (чёрный/белый в зависимости от яркости фона можно не усложнять)
+        cv2.putText(annotated, label, (x1 + 2, y1 - 4), font, font_scale, (255, 255, 255), 1, cv2.LINE_AA)
+
+    return annotated
 
 
 def main() -> None:
@@ -28,31 +61,29 @@ def main() -> None:
 
     log.info("Controller connection established")
 
-    # Optional detector initialisation
+    # Detector
     detector = None
     try:
-        from .detector import Detector  # heavy import
-
+        from .detector import Detector
         detector = Detector(cfg)
         log.info("Detector model loaded")
-    except Exception as exc:  # pragma: no cover - depends on environment
+    except Exception as exc:  # pragma: no cover
         log.warning("Detector unavailable, using random counts: %s", exc)
         traceback.print_exc()
 
-    # Optional video capture initialisation
+    # Video capture
     vc = None
     save_root = None
     try:
         from .video_capture import VideoCapture
-
         vc = VideoCapture(cfg)
         save_root = Path(cfg.get("snapshots", "save_dir", default="samples/detections"))
         save_root.mkdir(parents=True, exist_ok=True)
         log.info("Snapshots will be saved under: %s", save_root.resolve())
-    except Exception as exc:  # pragma: no cover - depends on environment
+    except Exception as exc:  # pragma: no cover
         log.warning("Video capture unavailable, using random frames: %s", exc)
 
-    # Map directions to camera ids
+    # Камеры по направлениям
     directions = [
         ("main", ["1"]),
         ("side", ["2", "3"]),
@@ -65,6 +96,7 @@ def main() -> None:
         while True:
             name, cam_ids = directions[idx % len(directions)]
             agg = CountsAggregator()
+
             for _ in range(shots):
                 count = 0
                 for cam_id in cam_ids:
@@ -73,16 +105,11 @@ def main() -> None:
                         log.warning("Frame for camera %s is unavailable, skipping detection", cam_id)
                         continue
 
-                    # детекция (если доступна)
-                    boxes = []
+                    out_img = frame
                     if detector is not None:
-                        boxes = detector.predict(frame)
-                        count += len(boxes)
-                        annotated = vc.annotate(cam_id, frame, boxes)
-                        out_img = annotated if annotated is not None else frame
-                    else:
-                        # без детектора — просто сохраняем чистый кадр
-                        out_img = frame
+                        dets = detector.predict(frame)  # теперь detailed
+                        count += sum(1 for d in dets if d["name"] in ("car", "bus", "truck"))
+                        out_img = _draw_detections(frame, dets)
 
                     # сохранение
                     if save_root is not None:
