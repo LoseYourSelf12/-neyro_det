@@ -1,8 +1,21 @@
 import logging
 import os
+import sys
 from logging.handlers import RotatingFileHandler
 from .config import Config
 
+# какие логгеры часто добавляют СВОИ хендлеры
+_NOISY_LOGGERS = (
+    "ultralytics", "yolov5", "torch", "urllib3", "PIL",
+)
+
+def _remove_all_handlers(logger):
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+        try:
+            h.close()
+        except Exception:
+            pass
 
 def setup_logging(config: Config) -> None:
     level_name = config.get('logging', 'level', default='INFO')
@@ -14,21 +27,32 @@ def setup_logging(config: Config) -> None:
     max_bytes = config.get('logging', 'max_bytes', default=10_485_760)
     backup_count = config.get('logging', 'backup_count', default=5)
 
-    logger = logging.getLogger()
-    logger.setLevel(level)
+    root = logging.getLogger()
+    root.setLevel(level)
 
-    # Console handler
-    console = logging.StreamHandler()
+    # 1) Полностью очищаем существующие хендлеры, чтобы не было дублей
+    _remove_all_handlers(root)
+
+    # 2) Удаляем локальные хендлеры у «шумных» логгеров и разрешаем им
+    #    пропускать сообщения вверх (в root), чтобы формат был единый
+    for name in _NOISY_LOGGERS:
+        lg = logging.getLogger(name)
+        _remove_all_handlers(lg)
+        lg.propagate = True
+        # не меняем их уровень, пусть наследуют от root
+
+    # 3) Консольный хендлер
+    console = logging.StreamHandler(stream=sys.stderr)
     console.setLevel(level)
-    console_fmt = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
-    console.setFormatter(console_fmt)
-    logger.addHandler(console)
+    console.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+    root.addHandler(console)
 
-    # File handler
-    file_handler = RotatingFileHandler(log_file, maxBytes=max_bytes, backupCount=backup_count)
+    # 4) Файловый хендлер (всегда UTF-8, чтобы не ловить UnicodeEncodeError в файлах)
+    file_handler = RotatingFileHandler(
+        log_file, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
+    )
     file_handler.setLevel(level)
-    file_fmt = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
-    file_handler.setFormatter(file_fmt)
-    logger.addHandler(file_handler)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
+    root.addHandler(file_handler)
 
-    logger.debug("Logging initialized")
+    root.debug("Logging initialized")
