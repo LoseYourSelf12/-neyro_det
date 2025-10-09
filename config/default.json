@@ -1,8 +1,9 @@
 {
     "controller": {
-        "host": "192.168.1.33",
+        "host": "192.168.88.31",
+        "bind_host": "0.0.0.0",
         "listen_port": 1030,
-        "timeout": 20,
+        "timeout": 30,
         "client_name": "neyro_det",
         "poll_interval_sec": 1,
         "traffic_phase_lead_sec": 2
@@ -47,9 +48,11 @@
     },
     "analysis": {
         "shots_per_phase": 3,
-        "phase1_threshold": 50,
-        "phase2_threshold": 20,
-        "downgrade_cycles": 3
+        "phase1_threshold": 20,
+        "phase2_threshold": 10,
+        "downgrade_cycles": 2,
+        "main_cameras": ["1"],
+        "side_cameras": ["2","3"]
     },
     "logging": {
         "level": "INFO",
