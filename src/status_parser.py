@@ -1,90 +1,94 @@
-import datetime
+# src/status_parser.py
+from typing import Dict
 
-def _byte(hex_data: str, index: int) -> int:
-    return int(hex_data[2 * index: 2 * index + 2], 16)
-
-
-def parse_status_message(message: str) -> dict:
-    """Parse controller status message string.
-
-    The message is expected in format ``wsO_CMD:electric_coal:x<HEX>`` where
-    ``<HEX>`` is a sequence of hexadecimal byte values.
-    Returns a dictionary with at least keys ``program``, ``phase`` and
-    ``time_left``. Extra fields are also provided for completeness.
+def parse_status_message(msg: str) -> Dict[str, int]:
     """
-    if 'x' not in message:
-        raise ValueError('Invalid status message')
-    hex_data = message.split('x', 1)[1].strip()
+    Парсит мониторинговое сообщение. На вход ожидаем строку вида 'x' + <HEX>,
+    где <HEX> — плотная hex-строка без пробелов.
+
+    Поддерживаются кадры на 18 и 19 байт. Отсутствующие поля -> 0.
+
+    Формат (индексы в байтах, 0-based):
+      0..6  : sec, min, hour, weekday, day, month, year(00..99)
+      7     : program (1..16)
+      8..9  : phase   (LE)  (берём младший байт)
+      10..11: takt    (LE)  (берём младший байт)
+      12    : флаги такта (не используем)
+      13    : Tmin
+      14    : Tosn
+      15    : remaining (до конца такта)
+      16    : cycle_second
+      17    : flags18 (режимы/состояния)
+      18    : additional_status (может отсутствовать)
+    """
+    if not msg:
+        raise ValueError("empty message")
+    if msg[0] in ("x", "n", "X", "N"):
+        hex_data = msg[1:]
+    else:
+        hex_data = msg
+
     if len(hex_data) % 2 != 0:
-        raise ValueError('Odd length of hex payload')
+        raise ValueError("invalid hex length: %d" % len(hex_data))
 
-    def b(idx: int) -> int:
-        return int(hex_data[2 * idx: 2 * idx + 2], 16)
+    def have(i):
+        return (2 * i + 2) <= len(hex_data)
 
-    seconds = b(0)
-    minutes = b(1)
-    hours = b(2)
-    week_day = b(3)
-    day = b(4)
-    month = b(5)
-    year = 2000 + b(6)
+    def b(i, default=0):
+        if not have(i):
+            return default
+        return int(hex_data[2 * i: 2 * i + 2], 16)
 
-    plan_number = b(7)
+    def u16le(i, default=0):
+        if not (have(i) and have(i + 1)):
+            return default
+        lo = b(i)
+        hi = b(i + 1)
+        return lo | (hi << 8)
 
-    phase_low = b(8)
-    phase_high = b(9)
-    tact_low = b(10)
-    tact_high = b(11)
+    sec      = b(0)
+    minute   = b(1)
+    hour     = b(2)
+    weekday  = b(3)
+    day      = b(4)
+    month    = b(5)
+    year     = b(6)
 
-    tact_flags = b(12)
-    min_time = b(13)
-    base_time = b(14)
-    remaining_time = b(15)
-    current_cycle_second = b(16)
+    program  = b(7)
+    if not (1 <= program <= 16):
+        program = 0
 
-    tvp_status = b(17)
-    additional_status = b(18)
+    phase_le = u16le(8)
+    takt_le  = u16le(10)
 
-    result = {
-        'datetime': datetime.datetime(year, month, day, hours, minutes, seconds),
-        'week_day': week_day,
-        'program': plan_number,
-        'phase': phase_low,
-        'tact': tact_low,
-        'tact_flags': tact_flags,
-        'min_time': min_time,
-        'base_time': base_time,
-        'time_left': remaining_time,
-        'cycle_second': current_cycle_second,
-        'tvp_status': tvp_status,
-        'additional_status': additional_status,
+    tmin         = b(13)
+    tosn         = b(14)
+    remaining    = b(15)
+    cycle_second = b(16)
+    flags18      = b(17)
+    additional   = b(18, 0)
+
+    phase = phase_le & 0xFF
+    takt  = takt_le  & 0xFF
+
+    return {
+        "sec": sec,
+        "minute": minute,
+        "hour": hour,
+        "weekday": weekday,
+        "day": day,
+        "month": month,
+        "year": 2000 + year if year <= 99 else year,
+
+        "program": program,
+        "phase": phase,
+        "takt": takt,
+
+        "tmin": tmin,
+        "tosn": tosn,
+        "time_left": remaining,
+        "cycle_second": cycle_second,
+
+        "flags18": flags18,
+        "additional_status": additional,
     }
-
-    # convenience boolean flags
-    result.update({
-        'main_tact': bool(tact_flags & 0x01),
-        'prom_tact': bool(tact_flags & 0x02),
-        'tvp1_tact': bool(tact_flags & 0x04),
-        'tvp2_tact': bool(tact_flags & 0x08),
-        'is_last_tact': bool(tact_flags & 0x10),
-        'door_open': bool(tact_flags & 0x40),
-        'power_signal': bool(tact_flags & 0x80),
-        'tvp1_call': bool(tvp_status & 0x01),
-        'tvp2_call': bool(tvp_status & 0x02),
-        'tvp1_phase': bool(tvp_status & 0x04),
-        'tvp2_phase': bool(tvp_status & 0x08),
-        'manual_mode': bool(tvp_status & 0x10),
-        'app_mode': bool(tvp_status & 0x20),
-        'tvp1_inactive': bool(tvp_status & 0x40),
-        'tvp2_inactive': bool(tvp_status & 0x80),
-        'fast_plan_change': bool(additional_status & 0x01),
-        'fast_plan_change_mode': bool(additional_status & 0x02),
-        'center_plan_change': bool(additional_status & 0x04),
-        'center_plan_active': bool(additional_status & 0x08),
-        'vf_mode_activated': bool(additional_status & 0x10),
-        'vf_mode': bool(additional_status & 0x20),
-        'engineer_mode': bool(additional_status & 0x40),
-        'emergency_mode': bool(additional_status & 0x80),
-    })
-
-    return result
