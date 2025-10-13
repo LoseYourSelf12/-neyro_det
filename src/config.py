@@ -3,9 +3,6 @@ import os
 from typing import Any, Dict
 
 class Config:
-    """
-    Загрузчик конфигурации из JSON-файла.
-    """
     def __init__(self, path: str = "config/default.json"):
         self._path = path
         self._data: Dict[str, Any] = {}
