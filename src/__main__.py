@@ -118,14 +118,13 @@ def _setup_progchange_logger(cfg: Config) -> logging.Logger:
 
     logger = logging.getLogger("progchange")
     logger.setLevel(level)
-    logger.propagate = False  # ВАЖНО: чтобы не шло в консоль/общий файл
+    logger.propagate = False  # чтобы не дублировать в общий лог
 
-    # не плодим хэндлеры при повторных запусках
     if not logger.handlers:
         log_dir = Path(path).parent
         log_dir.mkdir(parents=True, exist_ok=True)
         fh = RotatingFileHandler(path, maxBytes=int(max_bytes), backupCount=int(backup_count), encoding="utf-8")
-        # CSV: timestamp,from,to
+        # CSV: timestamp,FROM,TO
         fmt = logging.Formatter("%(asctime)s,%(message)s", datefmt="%Y-%m-%d %H:%M:%S.%f")
         fh.setFormatter(fmt)
         fh.setLevel(level)
@@ -202,7 +201,7 @@ def main():
     # Настройки анализа
     shots_per_probe = int(cfg.get("analysis", "shots_per_phase", default=1))
     poll_period = float(cfg.get("analysis", "poll_period_sec", default=0.5))
-    # sample_window больше не нужен — детект делаем ПОСЛЕ начала красного
+    # детект делаем ПОСЛЕ начала красного
     red_delay = float(cfg.get("analysis", "red_sample_delay_sec", default=5.0))
 
     # Окно отправки и карты камер
@@ -210,11 +209,11 @@ def main():
     main_cams = cfg.get("analysis", "main_cameras", default=["1"]) or ["1"]
     side_cams = cfg.get("analysis", "side_cameras", default=["2", "3"]) or ["2", "3"]
 
-    # Состояние цикла
+    # Состояние цикла / фаз
     prev_phase = None
     cycle_id = 0
 
-    # «когда начался красный» для каждого направления
+    # метки начала красного и «уже сэмплировали в этом цикле»
     main_red_t0 = None
     side_red_t0 = None
     main_sampled_cycle = -1
@@ -278,36 +277,51 @@ def main():
                 if prev_phase == 1 and phase == 2:
                     # main стал красным
                     main_red_t0 = time.time()
-                    cycle_id += 1  # переход 1->2 считаем началом нового «замера цикла»
+                    cycle_id += 1  # считаем начало "цикла" здесь — согласованно используем ниже
+                    log.info("[PHASE] 1->2  (main RED start)")
                 elif prev_phase == 2 and phase == 1:
                     # side стал красным
                     side_red_t0 = time.time()
-                    # cycle_id инкрементируем на переходе 2->1? — уже сделали выше на 1->2,
-                    # оставим один инкремент на цикл
+                    log.info("[PHASE] 2->1  (side RED start)")
             prev_phase = phase
 
             # 3) съём очередей «через N секунд после начала красного»
             now = time.time()
 
-            # main: замерить после перехода 1->2
-            if main_red_t0 is not None and (now - main_red_t0) >= red_delay and main_sampled_cycle != cycle_id:
+            # main: замерить только когда main на красном (фаза 2)
+            if (
+                phase == 2 and
+                main_red_t0 is not None and
+                (now - main_red_t0) >= red_delay and
+                main_sampled_cycle != cycle_id
+            ):
                 q = _count_direction(detector, vc, main_cams, shots_per_probe, log,
                                      (day_dir / "main") if day_dir else None)
                 last_q_main = q
                 main_sampled_cycle = cycle_id
+                main_red_t0 = None  # сброс, чтобы не пересчитать повторно
                 log.info("[MEAS] main queue=%d (prog=%s, +%ss after red)", q, current_prog, red_delay)
 
-            # side: замерить после перехода 2->1
-            if side_red_t0 is not None and (now - side_red_t0) >= red_delay and side_sampled_cycle != cycle_id:
+            # side: замерить только когда side на красном (фаза 1)
+            if (
+                phase == 1 and
+                side_red_t0 is not None and
+                (now - side_red_t0) >= red_delay and
+                side_sampled_cycle != cycle_id
+            ):
                 q = _count_direction(detector, vc, side_cams, shots_per_probe, log,
                                      (day_dir / "side") if day_dir else None)
                 last_q_side = q
                 side_sampled_cycle = cycle_id
+                side_red_t0 = None  # сброс
                 log.info("[MEAS] side queue=%d (prog=%s, +%ss after red)", q, current_prog, red_delay)
 
             # 4A) ARM: обе оценки в этом цикле готовы — принимаем решение
-            if (pending_apply_prog is None and
-                main_sampled_cycle == cycle_id and side_sampled_cycle == cycle_id):
+            if (
+                pending_apply_prog is None and
+                main_sampled_cycle == cycle_id and
+                side_sampled_cycle == cycle_id
+            ):
                 new_prog = engine.decide(current_prog, last_q_main, last_q_side)
                 if new_prog is not None and new_prog != current_prog and engine.guard_allow():
                     pending_apply_prog = new_prog
@@ -320,7 +334,6 @@ def main():
                 if ok:
                     log.info("Program change REQUESTED: %s -> %s (awaiting confirmation)",
                              current_prog, pending_apply_prog)
-                    # для отдельного файла фиксируем «что ожидали подтвердить»
                     pending_confirm_from = current_prog
                     pending_confirm_to = pending_apply_prog
                     engine.guard_start(pending_apply_prog)
