@@ -49,8 +49,8 @@
     "analysis": {
         "shots_per_phase": 3,
         "red_sample_delay_sec": 5,
-        "phase1_threshold": 50,
-        "phase2_threshold": 20,
+        "phase1_threshold": 40,
+        "phase2_threshold": 15,
         "downgrade_cycles": 2,
         "main_cameras": ["1"],
         "side_cameras": ["2","3"]
